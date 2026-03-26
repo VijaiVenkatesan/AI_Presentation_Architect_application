@@ -24,39 +24,46 @@ def get_available_groq_models(_client):
         st.warning(f"Could not fetch live model list. Using fallback. Error: {e}")
         return ["llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
 
-# --- Core Presentation Logic (with Intelligent Layout Detection) ---
+# --- Core Presentation Logic (with Definitive Layout Cycling) ---
 def create_presentation_from_template(template_file, main_title, slides_content):
     """
-    Creates a new presentation by intelligently analyzing the template, using only
-    appropriate layouts for title and content slides.
+    Creates a new presentation by intelligently analyzing the template, separating the
+    title slide from a cycled list of true content layouts.
     """
     try:
         prs = Presentation(template_file)
     except Exception as e:
         st.error(f"❌ Error reading the template file: {e}"); return None
 
-    # --- Intelligent Layout Discovery ---
+    # --- DEFINITIVE FIX: Intelligent Layout Discovery and Separation ---
     title_layout = None
     content_layouts = []
 
+    # First, find the best candidate for the main title slide (usually the first one with a title).
+    for layout in prs.slide_layouts:
+        if any(p.placeholder_format.type in [PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE] for p in layout.placeholders):
+            title_layout = layout
+            break
+    
+    # If no title slide found, fallback to the first layout, but this is unlikely.
+    if not title_layout and len(prs.slide_layouts) > 0:
+        title_layout = prs.slide_layouts[0]
+        
+    # Now, build the list of content layouts, excluding the main title layout.
     for layout in prs.slide_layouts:
         has_title = any(p.placeholder_format.type in [PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE] for p in layout.placeholders)
         has_body = any(p.placeholder_format.type == PP_PLACEHOLDER.BODY for p in layout.placeholders)
-
-        # The first layout with a title is likely the main title slide.
-        if has_title and not title_layout:
-            title_layout = layout
         
-        # A valid content layout MUST have both a title and a body. This filters out section headers, etc.
-        if has_title and has_body:
+        # A valid content layout has both title and body, AND is not the main title slide.
+        if has_title and has_body and layout != title_layout:
             content_layouts.append(layout)
     
-    if not title_layout: title_layout = prs.slide_layouts[0] if len(prs.slide_layouts) > 0 else None
     if not content_layouts:
         st.error("❌ Template Error: Could not find any suitable 'Title and Content' layouts in your presentation. Please use a template with layouts that have both a title and a main body text area.")
         return None
+    # --- END DEFINITIVE FIX ---
 
-    # --- Clean the presentation by removing all existing slides ---
+    # Clean the presentation by removing all existing slides
     try:
         for i in range(len(prs.slides) - 1, -1, -1):
             rId = prs.slides._sldIdLst[i].rId
@@ -96,7 +103,6 @@ def create_presentation_from_template(template_file, main_title, slides_content)
 
 # --- Groq LLM Content Generation (JSON mode) ---
 def generate_content_with_groq(api_key, model, topic, num_slides):
-    # ... (This function remains robust and unchanged) ...
     if not api_key: st.error("Groq API key not configured."); return None
     client = Groq(api_key=api_key)
     system_prompt = f"""You are an expert presentation creator. Your response MUST be a valid JSON array of objects. Each object represents a single slide and must have two keys: "title" (a string) and "bullets" (an array of strings). Generate exactly {num_slides} unique slides about the topic: '{topic}'."""
@@ -115,7 +121,6 @@ def generate_content_with_groq(api_key, model, topic, num_slides):
 st.title("🚀 AI Presentation Architect")
 st.markdown("Create multi-slide presentations with layout variety and editable content.")
 
-# State Init
 if 'generated_slides' not in st.session_state: st.session_state.generated_slides = []
 if 'ppt_download_buffer' not in st.session_state: st.session_state.ppt_download_buffer = None
 
@@ -131,13 +136,11 @@ with st.sidebar:
             st.success("Groq API key loaded.", icon="✅")
         except:
             st.error("Groq API key not found in secrets."); groq_api_key = None; groq_client = None
-
         if groq_client:
             available_models = get_available_groq_models(groq_client)
             selected_model_id = st.selectbox("Select AI Model (Live)", options=available_models)
             topic = st.text_input("Presentation Topic", "The Future of Renewable Energy")
             num_slides = st.number_input("Number of Content Slides", min_value=1, max_value=50, value=3)
-
             if st.button("✨ Generate Content"):
                 with st.spinner(f"🤖 Calling {selected_model_id}..."):
                     generated_data = generate_content_with_groq(groq_api_key, selected_model_id, topic, num_slides)
@@ -157,7 +160,6 @@ else:
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True
         )
         st.markdown("---")
-
     if st.session_state.generated_slides:
         st.header("📝 Edit & Generate Presentation")
         edited_slides = []
