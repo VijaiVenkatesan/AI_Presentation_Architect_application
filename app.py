@@ -31,8 +31,8 @@ if 'edited_strategy' not in st.session_state:
     st.session_state.edited_strategy = None
 if 'available_models' not in st.session_state:
     st.session_state.available_models = []
-if 'template_prs' not in st.session_state:
-    st.session_state.template_prs = None
+if 'template_bytes' not in st.session_state:
+    st.session_state.template_bytes = None  # Store raw bytes, not Presentation object
 
 # ============================================================================
 # GROQ API FUNCTIONS
@@ -358,6 +358,11 @@ def add_table_slide(prs: Presentation, layout_idx: int, title: str, table_data: 
     headers = table_data.get('headers', [])
     rows = table_data.get('rows', [])
     
+    if not headers:
+        headers = ['Column 1', 'Column 2', 'Column 3']
+    if not rows:
+        rows = [['Data 1', 'Data 2', 'Data 3']]
+    
     # Find table placeholder
     table_placeholder = get_placeholder_by_type(slide, 13)  # Table type
     
@@ -381,8 +386,12 @@ def add_table_slide(prs: Presentation, layout_idx: int, title: str, table_data: 
         cell = table.rows[0].cells[col_idx]
         cell.text = str(header)
         # Make header bold if possible
-        if hasattr(cell.text_frame.paragraphs[0].runs[0], 'font'):
-            cell.text_frame.paragraphs[0].runs[0].font.bold = True
+        try:
+            for paragraph in cell.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.bold = True
+        except:
+            pass
     
     # Populate data rows
     for row_idx, row in enumerate(rows):
@@ -391,7 +400,7 @@ def add_table_slide(prs: Presentation, layout_idx: int, title: str, table_data: 
                 table.rows[row_idx + 1].cells[col_idx].text = str(cell_value)
 
 def build_presentation(
-    template_prs: Presentation,
+    template_bytes: bytes,
     layout_map: Dict[str, Any],
     main_title: str,
     topic: str,
@@ -400,8 +409,14 @@ def build_presentation(
     """Build the final presentation from the strategy."""
     
     try:
-        # Create a new presentation from template
-        prs = Presentation(io.BytesIO(template_prs._blob))
+        # Create a new presentation from template bytes
+        prs = Presentation(io.BytesIO(template_bytes))
+        
+        # Remove any existing slides from template (keep only layouts)
+        while len(prs.slides) > 0:
+            rId = prs.slides._sldIdLst[0].rId
+            prs.part.drop_rel(rId)
+            del prs.slides._sldIdLst[0]
         
         # Add title slide
         if layout_map['title_layout'] is not None:
@@ -429,7 +444,7 @@ def build_presentation(
                     st.warning(f"⚠️ No content layouts available. Skipping slide: {title}")
             
             elif slide_type == 'bar_chart':
-                # Use chart layouts with cycling
+                # Use chart layouts with cycling, or fallback to content layouts
                 if layout_map['chart_layouts']:
                     layout_idx = layout_map['chart_layouts'][chart_idx % len(layout_map['chart_layouts'])]
                     chart_idx += 1
@@ -443,7 +458,7 @@ def build_presentation(
                     st.warning(f"⚠️ No suitable layouts for chart. Skipping slide: {title}")
             
             elif slide_type == 'table':
-                # Use table layouts with cycling
+                # Use table layouts with cycling, or fallback to content layouts
                 if layout_map['table_layouts']:
                     layout_idx = layout_map['table_layouts'][table_idx % len(layout_map['table_layouts'])]
                     table_idx += 1
@@ -500,14 +515,18 @@ def main():
     
     if uploaded_file is not None:
         try:
-            # Load presentation
+            # Read and store template bytes
             template_bytes = uploaded_file.read()
-            prs = Presentation(io.BytesIO(template_bytes))
             
-            # Store in session state (store the bytes, not the object)
-            if st.session_state.template_prs is None:
-                st.session_state.template_prs = Presentation(io.BytesIO(template_bytes))
+            # Check if this is a new file upload
+            if st.session_state.template_bytes is None or st.session_state.template_bytes != template_bytes:
+                st.session_state.template_bytes = template_bytes
                 st.session_state.template_analyzed = False
+                st.session_state.ai_strategy = None
+                st.session_state.edited_strategy = None
+            
+            # Load presentation for analysis
+            prs = Presentation(io.BytesIO(template_bytes))
             
             # Analyze template
             if not st.session_state.template_analyzed:
@@ -519,6 +538,7 @@ def main():
             
         except Exception as e:
             st.error(f"❌ Error loading template: {str(e)}")
+            st.code(traceback.format_exc())
             st.stop()
     else:
         st.info("👆 Please upload a PowerPoint template to begin")
@@ -653,7 +673,7 @@ def main():
                     chart_data = slide.get('data', {})
                     
                     categories = chart_data.get('categories', [])
-                    st.write(f"Categories: {', '.join(categories)}")
+                    st.write(f"Categories: {', '.join(str(c) for c in categories)}")
                     
                     for series_idx, series in enumerate(chart_data.get('series', [])):
                         st.write(f"**{series.get('name', 'Series')}:** {series.get('values', [])}")
@@ -667,7 +687,7 @@ def main():
                     headers = table_data.get('headers', [])
                     rows = table_data.get('rows', [])
                     
-                    st.write(f"**Headers:** {', '.join(headers)}")
+                    st.write(f"**Headers:** {', '.join(str(h) for h in headers)}")
                     st.write(f"**Rows:** {len(rows)}")
                     
                     for row_idx, row in enumerate(rows[:3]):  # Show first 3 rows
@@ -704,7 +724,7 @@ def main():
         if st.button("🏗️ Build Final Presentation", type="primary", use_container_width=True):
             with st.spinner("Building your presentation..."):
                 final_prs = build_presentation(
-                    st.session_state.template_prs,
+                    st.session_state.template_bytes,  # Pass bytes, not Presentation object
                     st.session_state.layout_map,
                     main_title,
                     topic,
