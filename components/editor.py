@@ -34,13 +34,13 @@ def render_editor(content: Dict) -> Dict:
         with col2:
             st.markdown("#### Actions")
             
-            if st.button("📋 Duplicate", key=f"dup_{selected_idx}"):
+            if st.button("📋 Duplicate", key=f"dup_{selected_idx}", use_container_width=True):
                 new_slide = slide.copy()
                 new_slide['slide_number'] = len(content['slides']) + 1
                 content['slides'].append(new_slide)
                 st.rerun()
             
-            if st.button("🗑️ Delete", key=f"del_{selected_idx}"):
+            if st.button("🗑️ Delete", key=f"del_{selected_idx}", use_container_width=True):
                 if len(content['slides']) > 1:
                     content['slides'].pop(selected_idx)
                     for i, s in enumerate(content['slides']):
