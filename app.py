@@ -9,23 +9,17 @@ import json
 from groq import Groq
 
 # --- Page Configuration ---
-st.set_page_config(page_title="True AI Presentation Architect", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="AI Presentation Architect", page_icon="🧠", layout="wide")
 
-# --- 1. Dynamic Model Fetching (Re-integrated) ---
+# --- 1. Dynamic Model Fetching ---
 @st.cache_data(ttl=3600)
 def get_available_groq_models(_client):
-    """
-    Fetches available, active LLM models directly from the Groq API to ensure
-    the list is always up-to-date.
-    """
     try:
         model_list = _client.models.list().data
-        # Filter for active models suitable for chat/generation
         active_models = [m for m in model_list if m.active and "embedding" not in m.id]
         return sorted([model.id for model in active_models])
     except Exception as e:
         st.warning(f"Could not fetch live model list. Using a fallback. Error: {e}")
-        # This fallback list is used ONLY if the API call to get models fails.
         return ["llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
 
 # --- 2. AI-Driven Content Strategy ---
@@ -48,7 +42,6 @@ def generate_presentation_strategy(api_key, model, topic, num_slides):
             model=model, temperature=0.8, response_format={"type": "json_object"},
         )
         response_data = json.loads(chat_completion.choices[0].message.content)
-        # Find the actual list of slides within the returned JSON
         for key, value in response_data.items():
             if isinstance(value, list): return value
         st.error("AI did not return the expected slide array format."); return None
@@ -56,7 +49,7 @@ def generate_presentation_strategy(api_key, model, topic, num_slides):
         st.error(f"Groq API Error: Failed to generate presentation strategy. Details: {e}"); return None
 
 # --- 3. Intelligent Template Analysis ---
-@st.cache_data
+# --- FIX: REMOVED the @st.cache_data decorator from this function ---
 def analyze_template(_template_file_bytes):
     prs = Presentation(io.BytesIO(_template_file_bytes))
     layout_map = {"content": [], "chart": [], "table": [], "title": None}
@@ -69,7 +62,6 @@ def analyze_template(_template_file_bytes):
         elif has_title and PP_PLACEHOLDER.TABLE in placeholders: layout_map["table"].append(layout)
         elif has_title and PP_PLACEHOLDER.BODY in placeholders: layout_map["content"].append(layout)
 
-    # Fallbacks: if specific layouts don't exist, use the general content layout
     if not layout_map["chart"] and layout_map["content"]: layout_map["chart"] = layout_map["content"]
     if not layout_map["table"] and layout_map["content"]: layout_map["table"] = layout_map["content"]
     
@@ -78,8 +70,10 @@ def analyze_template(_template_file_bytes):
 # --- 4. Semantic Matching and Complex Population ---
 def create_presentation_from_strategy(template_file, main_title, strategy):
     try:
-        prs = Presentation(template_file)
+        # Pass the raw bytes to the analysis function
         layout_map = analyze_template(template_file.getvalue())
+        # Re-open the presentation object for manipulation
+        prs = Presentation(template_file)
     except Exception as e:
         st.error(f"❌ Error analyzing the template file: {e}"); return None
 
@@ -97,8 +91,8 @@ def create_presentation_from_strategy(template_file, main_title, strategy):
     for i, slide_data in enumerate(strategy):
         slide_type = slide_data.get("type", "content")
         layouts = layout_map.get(slide_type)
-        if not layouts: st.warning(f"No layout found for type '{slide_type}'. Using general content layout."); layouts = layout_map["content"]
-        if not layouts: st.error("No suitable content layouts found in template."); continue
+        if not layouts: st.warning(f"No layout for type '{slide_type}'. Using general content layout."); layouts = layout_map["content"]
+        if not layouts: st.error("No suitable content layouts found."); continue
 
         layout = layouts[i % len(layouts)]
         slide = prs.slides.add_slide(layout)
@@ -184,3 +178,4 @@ if st.session_state.strategy:
                 st.session_state.ppt_buffer = ppt_io
                 st.session_state.strategy = []
                 st.rerun()
+
