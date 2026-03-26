@@ -13,7 +13,6 @@ st.set_page_config(
 )
 
 # --- Core Presentation Logic ---
-
 def create_presentation_from_template(template_file, title, content_bullets):
     """
     Creates a new presentation from a template, with robust checks for missing placeholders.
@@ -21,7 +20,7 @@ def create_presentation_from_template(template_file, title, content_bullets):
     try:
         prs = Presentation(template_file)
     except Exception as e:
-        st.error(f"❌ Error reading the template file. Please ensure it's a valid .pptx file. Details: {e}")
+        st.error(f"❌ Error reading the template file: {e}")
         return None
 
     # Add Title Slide (Layout 0)
@@ -34,7 +33,7 @@ def create_presentation_from_template(template_file, title, content_bullets):
         except KeyError:
             pass  # No subtitle placeholder, which is fine.
     else:
-        st.warning("⚠️ Your template must have at least one slide layout to function.")
+        st.warning("⚠️ Your template must have at least one slide layout.")
         return None
 
     # Add Content Slide (Layout 1)
@@ -51,9 +50,9 @@ def create_presentation_from_template(template_file, title, content_bullets):
                 p.text = bullet
                 p.level = 0
         except KeyError:
-            st.warning("⚠️ The 'Title and Content' layout in your template is non-standard. Could not add bullet points.")
+            st.warning("⚠️ Your template's content layout is non-standard. Could not add bullet points.")
     else:
-        st.error("❌ Your template must have at least two layouts (for a Title slide and a Content slide).")
+        st.error("❌ Your template needs at least two layouts (Title, Content).")
         return None
 
     bio = io.BytesIO()
@@ -62,45 +61,31 @@ def create_presentation_from_template(template_file, title, content_bullets):
     return bio
 
 # --- Groq LLM Content Generation ---
-
 def generate_content_with_groq(api_key, model, prompt):
     """
     Generates content using Groq API and provides user-friendly error messages.
     """
     if not api_key:
-        st.error("Groq API key is not configured. Please set it in your Streamlit secrets.")
+        st.error("Groq API key not configured in Streamlit secrets.")
         return ""
     
     client = Groq(api_key=api_key)
     try:
         chat_completion = client.chat.completions.create(
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are a world-class assistant for generating content for business presentations. Your response MUST be a list of concise, impactful bullet points. Do not include a title, introduction, or any summary. Each bullet point must start on a new line."
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
+                {"role": "system", "content": "You are a world-class assistant for generating concise, impactful bullet points for business presentations. Do not include a title, introduction, or summary. Each bullet point must start on a new line."},
+                {"role": "user", "content": prompt}
             ],
             model=model
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
         try:
-            # Try to parse the specific Groq error for a cleaner message
             error_json_str = str(e).split(' - ', 1)[1]
             error_data = json.loads(error_json_str.replace("'", "\""))
             message = error_data.get('error', {}).get('message', 'An unknown API error occurred.')
-            code = error_data.get('error', {}).get('code', 'unknown')
             st.error(f"Groq API Error: {message}")
-            if code == 'organization_restricted':
-                st.warning("This error means your Groq account or API key is restricted. Please check your account status on the Groq dashboard or contact their support.")
-            elif code == 'model_decommissioned':
-                st.warning("The selected model is no longer supported by Groq. Please choose a different model.")
         except:
-            # Fallback for any other type of error
             st.error(f"An unexpected error occurred with the Groq API: {e}")
         return ""
 
@@ -123,9 +108,7 @@ with st.sidebar:
     with st.expander("2️⃣ Define Content", expanded=True):
         presentation_title = st.text_input("Presentation Title", "Quarterly Business Review")
         
-        use_ai_generator = st.toggle("Generate Content with AI", value=True)
-
-        if use_ai_generator:
+        if st.toggle("Generate Content with AI", value=True):
             st.subheader("AI Content Engine")
             try:
                 groq_api_key = st.secrets["GROQ_API_KEY"]
@@ -134,10 +117,10 @@ with st.sidebar:
                 st.error("Groq API key not found in secrets.")
                 groq_api_key = None
 
-            # --- CORRECTED MODEL LIST ---
+            # --- FINAL CORRECTED MODEL LIST ---
             available_models = {
-                "Llama 3.1 (70b)": "llama-3.1-70b-versatile",
-                "Llama 3.1 (8b)": "llama-3.1-8b-instant",
+                "Llama 3 (70b)": "llama3-70b-8192",
+                "Llama 3 (8b)": "llama3-8b-8192",
                 "Mixtral (8x7b)": "mixtral-8x7b-32768",
                 "Gemma 2 (9b)": "gemma2-9b-it",
             }
@@ -154,39 +137,33 @@ with st.sidebar:
                         if generated_text:
                             st.session_state['generated_content'] = generated_text
                             st.toast("Content generated!", icon="🎉")
-                            st.session_state.show_preview = False # Hide old preview if new content is generated
+                            st.session_state.show_preview = False
                             st.rerun()
 
     st.divider()
     st.subheader("📝 Review & Edit Content")
     content_text = st.text_area("Content (one bullet per line)", value=st.session_state['generated_content'], height=250, label_visibility="collapsed")
 
-# --- UI: Main Area (with Preview Logic) ---
+# --- UI: Main Area ---
 if uploaded_template is not None:
     st.header("🎬 Preview and Generate")
     
     content_bullets = [line.strip() for line in content_text.split('\n') if line.strip()]
 
-    # Show preview button only if a preview isn't already displayed
     if not st.session_state.show_preview:
         if st.button("📝 Preview My Presentation", use_container_width=True):
             if not presentation_title or not content_bullets:
-                st.warning("Please provide a title and at least one bullet point in the sidebar.")
+                st.warning("Please provide a title and at least one bullet point.")
             else:
                 st.session_state.show_preview = True
                 st.rerun()
 
-    # Display the preview if the state is true
     if st.session_state.show_preview:
         st.subheader("Content Preview")
         with st.container(border=True):
-            st.markdown(f"##### Slide 1: Title Slide")
-            st.markdown(f"- **Title:** `{presentation_title}`")
-            st.markdown(f"- **Subtitle:** `Generated by AI Presentation Architect`")
+            st.markdown(f"##### Slide 1: Title Slide\n- **Title:** `{presentation_title}`\n- **Subtitle:** `Generated by AI Presentation Architect`")
             st.markdown("---")
-            st.markdown(f"##### Slide 2: Content Slide")
-            st.markdown(f"- **Title:** `Key Discussion Points`")
-            st.markdown("- **Body:**")
+            st.markdown(f"##### Slide 2: Content Slide\n- **Title:** `Key Discussion Points`\n- **Body:**")
             for bullet in content_bullets:
                 st.markdown(f"  - {bullet}")
         
@@ -194,9 +171,7 @@ if uploaded_template is not None:
         
         if st.button("✅ Confirm & Generate PPT", type="primary", use_container_width=True):
             with st.spinner("Assembling your presentation..."):
-                generated_ppt_io = create_presentation_from_template(
-                    uploaded_template, presentation_title, content_bullets
-                )
+                generated_ppt_io = create_presentation_from_template(uploaded_template, presentation_title, content_bullets)
                 if generated_ppt_io:
                     st.success("Presentation generated successfully!")
                     st.download_button(
@@ -210,4 +185,3 @@ if uploaded_template is not None:
                     st.rerun()
 else:
     st.info("👈 Please upload your company's .pptx template in the sidebar to begin.")
-
