@@ -163,4 +163,4 @@ def render_sidebar(llm_handler: LLMHandler) -> Dict:
         </div>
         """, unsafe_allow_html=True)
     
-    return configk
+    return config
