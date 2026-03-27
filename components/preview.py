@@ -1,5 +1,5 @@
 """
-Preview Component - Updated with Template Colors
+Preview Component - Fixed Deprecation Warnings
 """
 
 import streamlit as st
@@ -99,9 +99,9 @@ def render_single_view(content: Dict, previews: List[Image.Image]) -> None:
             st.session_state.current_slide = len(previews) - 1
             st.rerun()
     
-    # Display slide
+    # Display slide - FIXED: use width instead of use_container_width
     if 0 <= idx < len(previews):
-        st.image(previews[idx], use_container_width=True)
+        st.image(previews[idx], width="stretch")
         
         # Slide info
         slide = content['slides'][idx]
@@ -129,7 +129,8 @@ def render_single_view(content: Dict, previews: List[Image.Image]) -> None:
                     st.session_state.current_slide = i
                     st.rerun()
                 
-                st.image(thumb, use_container_width=True)
+                # FIXED: use width instead of use_container_width
+                st.image(thumb, width="stretch")
 
 
 def render_grid_view(content: Dict, previews: List[Image.Image]) -> None:
@@ -145,9 +146,9 @@ def render_grid_view(content: Dict, previews: List[Image.Image]) -> None:
             
             if slide_idx < len(previews):
                 with col:
-                    # Slide preview
+                    # Slide preview - FIXED: use width instead of use_container_width
                     thumb = previews[slide_idx].resize((400, 225))
-                    st.image(thumb, use_container_width=True)
+                    st.image(thumb, width="stretch")
                     
                     # Slide info
                     slide = content['slides'][slide_idx]
