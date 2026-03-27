@@ -419,7 +419,20 @@ def main():
     if not st.session_state.slides:
         load_autosave()
     
-    render_sidebar()
+    # Render sidebar and get result
+    sidebar_result = render_sidebar()
+    
+    # Check if generation was triggered
+    if sidebar_result.get('generate', False):
+        topic = sidebar_result.get('topic', '')
+        num_slides = sidebar_result.get('num_slides', 10)
+        
+        if topic:
+            with st.spinner("🤖 AI is generating your presentation..."):
+                success = generate_presentation_content(topic, num_slides)
+                if success:
+                    st.success("✅ Presentation generated successfully!")
+                    st.rerun()
     
     st.markdown('<h1 class="main-header">🎨 AI Presentation Architect</h1>', unsafe_allow_html=True)
     
