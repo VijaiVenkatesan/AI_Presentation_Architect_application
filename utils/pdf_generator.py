@@ -1,5 +1,5 @@
 """
-Enhanced PDF Generator - Generates from slide data, not screenshots
+Enhanced PDF Generator - Fixed ASCII quotes
 """
 from typing import Dict, List, Any, Optional
 from pathlib import Path
@@ -77,16 +77,7 @@ class EnhancedPDFGenerator:
         ))
     
     def generate(self, slides_data: List[Dict[str, Any]], output_path: Optional[str] = None) -> io.BytesIO:
-        """
-        Generate PDF from slide data
-        
-        Args:
-            slides_data: List of slide dictionaries
-            output_path: Optional file path to save PDF
-        
-        Returns:
-            BytesIO object with PDF
-        """
+        """Generate PDF from slide data"""
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -103,12 +94,11 @@ class EnhancedPDFGenerator:
             try:
                 slide_elements = self._create_slide_elements(slide_data)
                 story.extend(slide_elements)
-                story.append(Spacer(1, 0.5*inch))  # Space between slides
+                story.append(Spacer(1, 0.5*inch))
                 story.append(self._add_page_break())
             except Exception as e:
                 logger.error(f"Failed to create slide {slide_data.get('slide_number')}: {e}", exc_info=True)
-                # Add error placeholder
-                story.append(Paragraph(f"⚠️ Slide {slide_data.get('slide_number')} - Generation Error", self.styles['SlideTitle']))
+                story.append(Paragraph(f"Slide {slide_data.get('slide_number')} - Generation Error", self.styles['SlideTitle']))
                 story.append(Spacer(1, 0.2*inch))
         
         doc.build(story)
@@ -121,12 +111,10 @@ class EnhancedPDFGenerator:
         elements = []
         layout = slide_data.get('layout', 'content')
         
-        # Add slide title
         if slide_data.get('title'):
             elements.append(Paragraph(slide_data['title'], self.styles['SlideTitle']))
             elements.append(Spacer(1, 0.2*inch))
         
-        # Route to specific layout handler
         handler = getattr(self, f'_handle_{layout}_pdf', self._handle_content_pdf)
         elements.extend(handler(slide_data))
         
@@ -142,7 +130,7 @@ class EnhancedPDFGenerator:
             elements.append(Spacer(1, 0.1*inch))
         
         for bullet in content.get('bullet_points', []):
-            elements.append(Paragraph(f"• {bullet}", self.styles['BulletPoint']))
+            elements.append(Paragraph(f"- {bullet}", self.styles['BulletPoint']))
         
         return elements
     
@@ -151,11 +139,9 @@ class EnhancedPDFGenerator:
         elements = []
         content = slide_data.get('content', {})
         
-        # Create two-column table
         left_content = content.get('left_column', '')
         right_content = content.get('right_column', '')
         
-        # Format as lists if strings
         if isinstance(left_content, str):
             left_items = [left_content]
         else:
@@ -166,11 +152,10 @@ class EnhancedPDFGenerator:
         else:
             right_items = right_content
         
-        # Create table data
         table_data = [
             [
-                '\n'.join([f"• {item}" for item in left_items]),
-                '\n'.join([f"• {item}" for item in right_items])
+                '\n'.join([f"- {item}" for item in left_items]),
+                '\n'.join([f"- {item}" for item in right_items])
             ]
         ]
         
@@ -191,14 +176,13 @@ class EnhancedPDFGenerator:
         chart_data = content.get('chart', {})
         
         if chart_data.get('title'):
-            elements.append(Paragraph(f"📊 {chart_data['title']}", self.styles['SlideContent']))
+            elements.append(Paragraph(f"Chart: {chart_data['title']}", self.styles['SlideContent']))
             elements.append(Spacer(1, 0.1*inch))
         
         if chart_data.get('description'):
             elements.append(Paragraph(chart_data['description'], self.styles['SlideContent']))
             elements.append(Spacer(1, 0.1*inch))
         
-        # Add chart data as table
         if chart_data.get('data'):
             table_data = [['Metric', 'Value']]
             for key, value in chart_data['data'].items():
@@ -242,17 +226,18 @@ class EnhancedPDFGenerator:
         return elements
     
     def _handle_quote_pdf(self, slide_data: Dict[str, Any]) -> List:
-        """Handle quote layout"""
+        """Handle quote layout - FIXED QUOTES"""
         elements = []
         content = slide_data.get('content', {})
         
         quote_text = content.get('quote', '')
         quote_author = content.get('quote_author', '')
         
-        elements.append(Paragraph(f""{quote_text}"", self.styles['Quote']))
+        # FIXED: Use escaped quotes
+        elements.append(Paragraph('"' + quote_text + '"', self.styles['Quote']))
         
         if quote_author:
-            elements.append(Paragraph(f"— {quote_author}", self.styles['BulletPoint']))
+            elements.append(Paragraph(f"- {quote_author}", self.styles['BulletPoint']))
         
         return elements
     
@@ -262,7 +247,6 @@ class EnhancedPDFGenerator:
         content = slide_data.get('content', {})
         metrics = content.get('key_metrics', [])
         
-        # Create metrics table
         table_data = []
         for metric in metrics:
             table_data.append([
@@ -289,7 +273,6 @@ class EnhancedPDFGenerator:
         
         if image_data:
             try:
-                # Handle base64 image
                 if isinstance(image_data, str) and image_data.startswith('data:image'):
                     import base64
                     import re
@@ -304,7 +287,7 @@ class EnhancedPDFGenerator:
                     elements.append(img)
             except Exception as e:
                 logger.error(f"Failed to add image to PDF: {e}")
-                elements.append(Paragraph("🖼️ Image placeholder (failed to load)", self.styles['SlideContent']))
+                elements.append(Paragraph("Image placeholder (failed to load)", self.styles['SlideContent']))
         
         return elements
     
@@ -318,7 +301,7 @@ class EnhancedPDFGenerator:
             date = item.get('date', '')
             desc = item.get('description', '')
             
-            elements.append(Paragraph(f"📅 {date}", self.styles['SlideContent']))
+            elements.append(Paragraph(f"Date: {date}", self.styles['SlideContent']))
             elements.append(Paragraph(desc, self.styles['BulletPoint']))
             elements.append(Spacer(1, 0.1*inch))
         
@@ -334,7 +317,7 @@ class EnhancedPDFGenerator:
             elements.append(Spacer(1, 0.1*inch))
         
         for bullet in content.get('bullet_points', []):
-            elements.append(Paragraph(f"✓ {bullet}", self.styles['BulletPoint']))
+            elements.append(Paragraph(f"- {bullet}", self.styles['BulletPoint']))
         
         return elements
     
