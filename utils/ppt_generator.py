@@ -100,22 +100,32 @@ class PresentationGenerator:
     def _remove_all_slides(self):
         """Remove all slides from presentation while keeping masters"""
         try:
-            # Get all slide IDs
-            slide_count = len(self.prs.slides)
-            
-            # Remove slides from the end to avoid index issues
-            for _ in range(slide_count):
-                # Access the slide ID list directly
-                slide_id = self.prs.slides._sldIdLst[0]
-                rId = slide_id.rId
+            # Count slides
+            while len(self.prs.slides) > 0:
+                # Get the first slide's relationship ID
+                slide = self.prs.slides[0]
+                rId = self.prs.part.relate_to(slide.part, 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide')
                 
-                # Remove the relationship
-                self.prs.part.drop_rel(rId)
-                
-                # Remove from slide ID list
-                self.prs.slides._sldIdLst.remove(slide_id)
+                # Find and remove the slide
+                for idx, sldId in enumerate(self.prs.slides._sldIdLst):
+                    if sldId.rId == rId:
+                        self.prs.part.drop_rel(rId)
+                        del self.prs.slides._sldIdLst[idx]
+                        break
+                else:
+                    # Fallback: just remove first slide element
+                    if len(self.prs.slides._sldIdLst) > 0:
+                        first_sldId = self.prs.slides._sldIdLst[0]
+                        try:
+                            self.prs.part.drop_rel(first_sldId.rId)
+                        except:
+                            pass
+                        del self.prs.slides._sldIdLst[0]
+                    else:
+                        break
+                        
         except Exception as e:
-            print(f"Warning: Could not remove template slides: {e}")
+            print(f"Could not clear slides: {e}")
             # If removal fails, we'll just add slides to the existing presentation
             # This is acceptable - the new slides will be added after existing ones
     
