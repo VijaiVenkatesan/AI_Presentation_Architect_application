@@ -1,264 +1,135 @@
-"""
-Slide Editor Component
-"""
+"""Slide Editor Component"""
 import streamlit as st
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
+import copy
 
 def render_slide_editor():
-    """Render the slide editor interface"""
-    
-    if not st.session_state.get('slides', []):
-        st.info("No slides available. Generate content first.")
+    if not st.session_state.get('slides'):
+        st.info("No slides. Generate first.")
         return
     
     slides = st.session_state.slides
-    
-    # Slide navigation
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
+    col1, col2, col3 = st.columns([1,2,1])
     with col1:
-        if st.button("◀ Previous", use_container_width=True):
-            if st.session_state.current_slide_index > 0:
-                st.session_state.current_slide_index -= 1
-                st.rerun()
-    
+        if st.button("◀ Prev", use_container_width=True) and st.session_state.current_slide_index > 0:
+            st.session_state.current_slide_index -= 1
+            st.rerun()
     with col2:
-        current_idx = st.session_state.current_slide_index
-        total_slides = len(slides)
-        st.write(f"**Slide {current_idx + 1} of {total_slides}**")
-    
+        st.write(f"**Slide {st.session_state.current_slide_index+1} of {len(slides)}**")
     with col3:
-        if st.button("Next ▶", use_container_width=True):
-            if st.session_state.current_slide_index < total_slides - 1:
-                st.session_state.current_slide_index += 1
-                st.rerun()
+        if st.button("Next ▶", use_container_width=True) and st.session_state.current_slide_index < len(slides)-1:
+            st.session_state.current_slide_index += 1
+            st.rerun()
     
     st.divider()
-    
-    # Edit current slide
-    current_slide = slides[st.session_state.current_slide_index]
-    
-    col_a, col_b = st.columns([2, 1])
-    
+    cs = slides[st.session_state.current_slide_index]
+    col_a, col_b = st.columns([2,1])
     with col_a:
-        # Edit title
-        new_title = st.text_input(
-            "Slide Title",
-            value=current_slide.get('title', ''),
-            key=f"title_{st.session_state.current_slide_index}"
-        )
-        
-        # Edit layout
-        layout_options = [
-            'title', 'content', 'two_column', 'chart', 'table',
-            'quote', 'metrics', 'timeline', 'image', 'conclusion'
-        ]
-        new_layout = st.selectbox(
-            "Slide Layout",
-            options=layout_options,
-            index=layout_options.index(current_slide.get('layout', 'content')) if current_slide.get('layout') in layout_options else 1,
-            key=f"layout_{st.session_state.current_slide_index}"
-        )
-    
+        new_title = st.text_input("Title", value=cs.get('title',''), key=f"t_{st.session_state.current_slide_index}")
+        layouts = ['title','content','two_column','chart','table','quote','metrics','timeline','image','conclusion']
+        new_layout = st.selectbox("Layout", layouts, index=layouts.index(cs.get('layout','content')) if cs.get('layout') in layouts else 1, key=f"l_{st.session_state.current_slide_index}")
     with col_b:
-        st.metric("Layout", current_slide.get('layout', 'content'))
-        st.metric("Slide #", current_slide.get('slide_number', st.session_state.current_slide_index + 1))
+        st.metric("Layout", cs.get('layout','content'))
+        st.metric("Slide #", cs.get('slide_number', st.session_state.current_slide_index+1))
     
     st.divider()
-    
-    # Edit content based on layout
     st.subheader("📝 Content")
-    
-    content = current_slide.get('content', {})
+    content = cs.get('content', {})
     
     if new_layout == 'content':
-        main_text = st.text_area("Main Text", value=content.get('main_text', ''), height=100)
-        bullet_points = st.text_area("Bullet Points (one per line)", value="\n".join(content.get('bullet_points', [])), height=150)
-        
-        if st.button("💾 Save Changes", key="save_content"):
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'main_text': main_text,
-                'bullet_points': [p.strip() for p in bullet_points.split('\n') if p.strip()]
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        mt = st.text_area("Main Text", value=content.get('main_text',''), height=100)
+        bp = st.text_area("Bullets (one per line)", value="\n".join(content.get('bullet_points',[])), height=150)
+        if st.button("💾 Save", key="sv_c"):
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'main_text':mt,'bullet_points':[x.strip() for x in bp.split('\n') if x.strip()]}})
+            st.success("✅ Saved")
     
     elif new_layout == 'two_column':
-        left_col = st.text_area("Left Column", value="\n".join(content.get('left_column', [])) if isinstance(content.get('left_column'), list) else content.get('left_column', ''), height=200)
-        right_col = st.text_area("Right Column", value="\n".join(content.get('right_column', [])) if isinstance(content.get('right_column'), list) else content.get('right_column', ''), height=200)
-        
-        if st.button("💾 Save Changes", key="save_two_column"):
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'left_column': [p.strip() for p in left_col.split('\n') if p.strip()],
-                'right_column': [p.strip() for p in right_col.split('\n') if p.strip()]
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        lc = st.text_area("Left", value="\n".join(content.get('left_column',[])) if isinstance(content.get('left_column'),list) else content.get('left_column',''), height=200)
+        rc = st.text_area("Right", value="\n".join(content.get('right_column',[])) if isinstance(content.get('right_column'),list) else content.get('right_column',''), height=200)
+        if st.button("💾 Save", key="sv_2c"):
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'left_column':[x.strip() for x in lc.split('\n') if x.strip()],'right_column':[x.strip() for x in rc.split('\n') if x.strip()]}})
+            st.success("✅ Saved")
     
     elif new_layout == 'chart':
-        chart_title = st.text_input("Chart Title", value=content.get('chart', {}).get('title', ''))
-        chart_desc = st.text_area("Chart Description", value=content.get('chart', {}).get('description', ''), height=100)
-        chart_data = st.text_area("Chart Data (key: value per line)", value="\n".join([f"{k}: {v}" for k, v in content.get('chart', {}).get('data', {}).items()]), height=200)
-        
-        if st.button("💾 Save Changes", key="save_chart"):
-            data_dict = {}
-            for line in chart_data.split('\n'):
-                if ':' in line:
-                    k, v = line.split(':', 1)
-                    data_dict[k.strip()] = v.strip()
-            
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'chart': {
-                    'title': chart_title,
-                    'description': chart_desc,
-                    'data': data_dict
-                }
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        ct = st.text_input("Chart Title", value=content.get('chart',{}).get('title',''))
+        cd = st.text_area("Description", value=content.get('chart',{}).get('description',''), height=100)
+        cdt = st.text_area("Data (key: value)", value="\n".join([f"{k}: {v}" for k,v in content.get('chart',{}).get('data',{}).items()]), height=200)
+        if st.button("💾 Save", key="sv_ch"):
+            dd = {}
+            for ln in cdt.split('\n'):
+                if ':' in ln: k,v = ln.split(':',1); dd[k.strip()] = v.strip()
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'chart':{'title':ct,'description':cd,'data':dd}}})
+            st.success("✅ Saved")
     
     elif new_layout == 'table':
-        headers = st.text_input("Headers (comma-separated)", value=",".join(content.get('table', {}).get('headers', [])))
-        table_rows = st.text_area("Table Rows (one row per line, comma-separated values)", value="\n".join([",".join(row) for row in content.get('table', {}).get('data', [])]), height=200)
-        
-        if st.button("💾 Save Changes", key="save_table"):
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'table': {
-                    'headers': [h.strip() for h in headers.split(',') if h.strip()],
-                    'data': [[cell.strip() for cell in row.split(',')] for row in table_rows.split('\n') if row.strip()]
-                }
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        hdrs = st.text_input("Headers (comma)", value=",".join(content.get('table',{}).get('headers',[])))
+        rows = st.text_area("Rows (comma-sep, one per line)", value="\n".join([",".join(r) for r in content.get('table',{}).get('data',[])]), height=200)
+        if st.button("💾 Save", key="sv_tb"):
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'table':{'headers':[h.strip() for h in hdrs.split(',') if h.strip()],'data':[[c.strip() for c in r.split(',')] for r in rows.split('\n') if r.strip()]}}})
+            st.success("✅ Saved")
     
     elif new_layout == 'quote':
-        quote_text = st.text_area("Quote", value=content.get('quote', ''), height=100)
-        quote_author = st.text_input("Author", value=content.get('quote_author', ''))
-        
-        if st.button("💾 Save Changes", key="save_quote"):
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'quote': quote_text,
-                'quote_author': quote_author
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        qt = st.text_area("Quote", value=content.get('quote',''), height=100)
+        qa = st.text_input("Author", value=content.get('quote_author',''))
+        if st.button("💾 Save", key="sv_qt"):
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'quote':qt,'quote_author':qa}})
+            st.success("✅ Saved")
     
     elif new_layout == 'metrics':
-        metrics_input = st.text_area("Metrics (label: value per line)", value="\n".join([f"{m.get('label', '')}: {m.get('value', '')}" for m in content.get('key_metrics', [])]), height=200)
-        
-        if st.button("💾 Save Changes", key="save_metrics"):
-            metrics_list = []
-            for line in metrics_input.split('\n'):
-                if ':' in line:
-                    label, value = line.split(':', 1)
-                    metrics_list.append({'label': label.strip(), 'value': value.strip()})
-            
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'key_metrics': metrics_list
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        mi = st.text_area("Metrics (label: value)", value="\n".join([f"{m.get('label','')}: {m.get('value','')}" for m in content.get('key_metrics',[])]), height=200)
+        if st.button("💾 Save", key="sv_mt"):
+            ml = []
+            for ln in mi.split('\n'):
+                if ':' in ln: l,v = ln.split(':',1); ml.append({'label':l.strip(),'value':v.strip()})
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'key_metrics':ml}})
+            st.success("✅ Saved")
     
     elif new_layout == 'image':
-        image_desc = st.text_area("Image Description", value=content.get('image', '') if isinstance(content.get('image'), str) and not content.get('image').startswith('data:') else '', height=100)
-        st.info("📌 Note: Images are auto-generated by AI. Manual upload coming soon.")
-        
-        if st.button("💾 Save Changes", key="save_image"):
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'image': image_desc
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        idesc = st.text_area("Image Description", value=content.get('image','') if isinstance(content.get('image'),str) and not content.get('image').startswith('image') else '', height=100)
+        st.info("📌 Images auto-generated by AI. Manual upload coming soon.")
+        if st.button("💾 Save", key="sv_img"):
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'image':idesc}})
+            st.success("✅ Saved")
     
     elif new_layout == 'timeline':
-        timeline_input = st.text_area("Timeline Items (date: description per line)", value="\n".join([f"{t.get('date', '')}: {t.get('description', '')}" for t in content.get('timeline_items', [])]), height=200)
-        
-        if st.button("💾 Save Changes", key="save_timeline"):
-            timeline_list = []
-            for line in timeline_input.split('\n'):
-                if ':' in line:
-                    date, desc = line.split(':', 1)
-                    timeline_list.append({'date': date.strip(), 'description': desc.strip()})
-            
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'timeline_items': timeline_list
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        ti = st.text_area("Timeline (date: desc)", value="\n".join([f"{t.get('date','')}: {t.get('description','')}" for t in content.get('timeline_items',[])]), height=200)
+        if st.button("💾 Save", key="sv_tl"):
+            tl = []
+            for ln in ti.split('\n'):
+                if ':' in ln: d,desc = ln.split(':',1); tl.append({'date':d.strip(),'description':desc.strip()})
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'timeline_items':tl}})
+            st.success("✅ Saved")
     
     elif new_layout == 'conclusion':
-        main_text = st.text_area("Conclusion Text", value=content.get('main_text', ''), height=100)
-        bullet_points = st.text_area("Key Points (one per line)", value="\n".join(content.get('bullet_points', [])), height=150)
-        
-        if st.button("💾 Save Changes", key="save_conclusion"):
-            slides[st.session_state.current_slide_index]['title'] = new_title
-            slides[st.session_state.current_slide_index]['layout'] = new_layout
-            slides[st.session_state.current_slide_index]['content'] = {
-                'main_text': main_text,
-                'bullet_points': [p.strip() for p in bullet_points.split('\n') if p.strip()]
-            }
-            st.session_state.slides = slides
-            st.success("✅ Slide saved!")
+        mt = st.text_area("Conclusion", value=content.get('main_text',''), height=100)
+        bp = st.text_area("Key Points", value="\n".join(content.get('bullet_points',[])), height=150)
+        if st.button("💾 Save", key="sv_cn"):
+            slides[st.session_state.current_slide_index].update({'title':new_title,'layout':new_layout,'content':{'main_text':mt,'bullet_points':[x.strip() for x in bp.split('\n') if x.strip()]}})
+            st.success("✅ Saved")
     
-    else:
-        st.warning(f"Unknown layout: {new_layout}")
-    
-    # Slide management
     st.divider()
-    st.subheader("⚙️ Slide Management")
-    
+    st.subheader("⚙️ Manage")
     col_x, col_y, col_z = st.columns(3)
-    
     with col_x:
-        if st.button("➕ Add New Slide", use_container_width=True):
-            new_slide = {
-                'slide_number': len(slides) + 1,
-                'layout': 'content',
-                'title': 'New Slide',
-                'content': {'main_text': '', 'bullet_points': []}
-            }
-            slides.append(new_slide)
+        if st.button("➕ Add Slide", use_container_width=True):
+            slides.append({'slide_number':len(slides)+1,'layout':'content','title':'New Slide','content':{'main_text':'','bullet_points':[]}})
             st.session_state.slides = slides
-            st.session_state.current_slide_index = len(slides) - 1
+            st.session_state.current_slide_index = len(slides)-1
             st.rerun()
-    
     with col_y:
-        if st.button("🗑️ Delete Current Slide", use_container_width=True, disabled=len(slides) <= 1):
+        if st.button("🗑️ Delete", use_container_width=True, disabled=len(slides)<=1):
             slides.pop(st.session_state.current_slide_index)
-            # Renumber slides
-            for i, slide in enumerate(slides):
-                slide['slide_number'] = i + 1
+            for i,s in enumerate(slides): s['slide_number'] = i+1
             st.session_state.slides = slides
-            if st.session_state.current_slide_index >= len(slides):
-                st.session_state.current_slide_index = len(slides) - 1
+            if st.session_state.current_slide_index >= len(slides): st.session_state.current_slide_index = len(slides)-1
             st.rerun()
-    
     with col_z:
-        if st.button("📋 Duplicate Slide", use_container_width=True):
-            import copy
-            new_slide = copy.deepcopy(slides[st.session_state.current_slide_index])
-            new_slide['slide_number'] = len(slides) + 1
-            new_slide['title'] = f"{new_slide['title']} (Copy)"
-            slides.insert(st.session_state.current_slide_index + 1, new_slide)
-            # Renumber slides
-            for i, slide in enumerate(slides):
-                slide['slide_number'] = i + 1
+        if st.button("📋 Duplicate", use_container_width=True):
+            ns = copy.deepcopy(slides[st.session_state.current_slide_index])
+            ns['slide_number'] = len(slides)+1
+            ns['title'] = f"{ns['title']} (Copy)"
+            slides.insert(st.session_state.current_slide_index+1, ns)
+            for i,s in enumerate(slides): s['slide_number'] = i+1
             st.session_state.slides = slides
             st.session_state.current_slide_index += 1
             st.rerun()
