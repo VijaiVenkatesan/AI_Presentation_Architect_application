@@ -1,14 +1,13 @@
 """
 Enhanced PowerPoint Generator with complete layout support
-Fixed version with proper ASCII quotes
+Fixed version with correct imports and ASCII quotes
 """
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 import io
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Inches, Pt, RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.dml.color import RgbColor
 from pptx.enum.shapes import MSO_SHAPE
 import base64
 import logging
@@ -194,8 +193,8 @@ class EnhancedPPTGenerator:
             left_pos, top_pos, chart_width, chart_height
         )
         chart_shape.fill.solid()
-        chart_shape.fill.fore_color.rgb = RgbColor(240, 240, 240)
-        chart_shape.line.color.rgb = RgbColor(200, 200, 200)
+        chart_shape.fill.fore_color.rgb = RGBColor(240, 240, 240)
+        chart_shape.line.color.rgb = RGBColor(200, 200, 200)
         
         tf = chart_shape.text_frame
         tf.text = f"Chart: {chart_data.get('title', 'Chart')}"
@@ -271,7 +270,7 @@ class EnhancedPPTGenerator:
                     cell.text_frame.paragraphs[0].font.size = Pt(10)
     
     def _handle_quote_layout(self, slide, slide_data):
-        """Handle quote layout - FIXED QUOTES"""
+        """Handle quote layout"""
         content = slide_data.get('content', {})
         
         if len(slide.shapes) > 1:
@@ -284,14 +283,13 @@ class EnhancedPPTGenerator:
             self.slide_width - Inches(1.6), Inches(2.5)
         )
         quote_box.fill.solid()
-        quote_box.fill.fore_color.rgb = RgbColor(245, 245, 245)
-        quote_box.line.color.rgb = RgbColor(200, 200, 200)
+        quote_box.fill.fore_color.rgb = RGBColor(245, 245, 245)
+        quote_box.line.color.rgb = RGBColor(200, 200, 200)
         
         tf = quote_box.text_frame
         tf.word_wrap = True
         
         p = tf.paragraphs[0]
-        # FIXED: Use escaped quotes instead of smart quotes
         p.text = '"' + content.get('quote', 'Quote text') + '"'
         p.font.size = Pt(20)
         p.font.italic = True
@@ -329,8 +327,8 @@ class EnhancedPPTGenerator:
                 left_pos, top_pos, box_width, box_height
             )
             metric_box.fill.solid()
-            metric_box.fill.fore_color.rgb = RgbColor(79, 129, 189)
-            metric_box.line.color.rgb = RgbColor(79, 129, 189)
+            metric_box.fill.fore_color.rgb = RGBColor(79, 129, 189)
+            metric_box.line.color.rgb = RGBColor(79, 129, 189)
             
             tf = metric_box.text_frame
             tf.clear()
@@ -368,7 +366,7 @@ class EnhancedPPTGenerator:
             timeline_left, timeline_y + Inches(0.5),
             timeline_width, Inches(0.05)
         )
-        line.line.color.rgb = RgbColor(79, 129, 189)
+        line.line.color.rgb = RGBColor(79, 129, 189)
         line.line.width = Pt(3)
         
         num_items = len(timeline_items)
@@ -383,7 +381,7 @@ class EnhancedPPTGenerator:
                 Inches(0.5), Inches(0.5)
             )
             marker.fill.solid()
-            marker.fill.fore_color.rgb = RgbColor(79, 129, 189)
+            marker.fill.fore_color.rgb = RGBColor(79, 129, 189)
             
             tf_box = slide.shapes.add_textbox(
                 x_pos - Inches(1), timeline_y - Inches(0.8),
@@ -456,7 +454,7 @@ class EnhancedPPTGenerator:
                 left_pos, top_pos, img_width, img_height
             )
             placeholder.fill.solid()
-            placeholder.fill.fore_color.rgb = RgbColor(240, 240, 240)
+            placeholder.fill.fore_color.rgb = RGBColor(240, 240, 240)
             tf = placeholder.text_frame
             tf.text = "Image Placeholder (Failed to load)"
             tf.paragraphs[0].font.size = Pt(16)
@@ -475,7 +473,7 @@ class EnhancedPPTGenerator:
             self.slide_width - Inches(1), Inches(3.0)
         )
         conclusion_box.fill.solid()
-        conclusion_box.fill.fore_color.rgb = RgbColor(79, 129, 189)
+        conclusion_box.fill.fore_color.rgb = RGBColor(79, 129, 189)
         
         tf = conclusion_box.text_frame
         tf.word_wrap = True
@@ -507,4 +505,4 @@ class EnhancedPPTGenerator:
             tf = error_box.text_frame
             tf.text = f"Layout: {layout}\n\nError: {error}\n\nPlease check logs for details."
             tf.paragraphs[0].font.size = Pt(14)
-            tf.paragraphs[0].font.color.rgb = RgbColor(255, 0, 0)
+            tf.paragraphs[0].font.color.rgb = RGBColor(255, 0, 0)
