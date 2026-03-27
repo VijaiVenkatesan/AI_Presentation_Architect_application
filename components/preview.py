@@ -57,10 +57,26 @@ def render_slide_preview(slide_data: Dict[str, Any], slide_index: int):
         slide_html += _render_timeline_layout(content)
     elif layout == 'conclusion':
         slide_html += _render_conclusion_layout(content)
+    else:
+        slide_html += _render_content_layout(content)
     
     slide_html += "</div>"
     
     st.markdown(slide_html, unsafe_allow_html=True)
+
+
+def display_all_slides_preview(slides_data: List[Dict[str, Any]]):
+    """Display all slides in preview mode"""
+    st.subheader("📊 Slide Preview")
+    
+    if not slides_data:
+        st.info("No slides to preview")
+        return
+    
+    for idx, slide_data in enumerate(slides_data, 1):
+        with st.expander(f"📝 Slide {idx} ({slide_data.get('layout', 'content')})", expanded=(idx == 1)):
+            render_slide_preview(slide_data, idx)
+
 
 def _render_content_layout(content: Dict[str, Any]) -> str:
     """Render content layout"""
@@ -73,6 +89,7 @@ def _render_content_layout(content: Dict[str, Any]) -> str:
         html += f"<p style='font-size: 14px; margin: 8px 0; padding-left: 20px;'>• {bullet}</p>"
     
     return html
+
 
 def _render_two_column_layout(content: Dict[str, Any]) -> str:
     """Render two-column layout"""
@@ -94,6 +111,7 @@ def _render_two_column_layout(content: Dict[str, Any]) -> str:
     </div>
     """
 
+
 def _render_chart_layout(content: Dict[str, Any]) -> str:
     """Render chart layout"""
     chart_data = content.get('chart', {})
@@ -112,12 +130,13 @@ def _render_chart_layout(content: Dict[str, Any]) -> str:
     
     return html
 
+
 def _render_table_layout(content: Dict[str, Any]) -> str:
     """Render table layout"""
     table_data = content.get('table', {})
     
     if not table_data.get('headers'):
-        return ""
+        return "<p>No table data available</p>"
     
     html = "<table style='width: 100%; border-collapse: collapse; margin-top: 15px;'>"
     html += "<tr style='background: #4F81BD; color: white;'>"
@@ -134,10 +153,13 @@ def _render_table_layout(content: Dict[str, Any]) -> str:
     html += "</table>"
     return html
 
+
 def _render_quote_layout(content: Dict[str, Any]) -> str:
     """Render quote layout"""
     quote = content.get('quote', '')
     author = content.get('quote_author', '')
+    
+    author_html = f"<p style='text-align: right; margin-top: 10px; color: #666;'>— {author}</p>" if author else ""
     
     return f"""
     <div style='
@@ -148,19 +170,24 @@ def _render_quote_layout(content: Dict[str, Any]) -> str:
         font-style: italic;
     '>
         <p style='font-size: 18px; margin: 0;'>"{quote}"</p>
-        {f"<p style='text-align: right; margin-top: 10px; color: #666;'>— {author}</p>" if author else ""}
+        {author_html}
     </div>
     """
+
 
 def _render_metrics_layout(content: Dict[str, Any]) -> str:
     """Render metrics layout"""
     metrics = content.get('key_metrics', [])
     
-    html = "<div style='display: flex; gap: 20px; margin-top: 20px;'>"
+    if not metrics:
+        return "<p>No metrics data available</p>"
+    
+    html = "<div style='display: flex; gap: 20px; margin-top: 20px; flex-wrap: wrap;'>"
     for metric in metrics:
         html += f"""
         <div style='
             flex: 1;
+            min-width: 150px;
             background: #4F81BD;
             color: white;
             padding: 20px;
@@ -174,6 +201,7 @@ def _render_metrics_layout(content: Dict[str, Any]) -> str:
     html += "</div>"
     return html
 
+
 def _render_image_layout(content: Dict[str, Any]) -> str:
     """Render image layout"""
     image_data = content.get('image', '')
@@ -184,11 +212,15 @@ def _render_image_layout(content: Dict[str, Any]) -> str:
         else:
             return "<div style='background: #f0f0f0; padding: 40px; text-align: center; border-radius: 8px; margin: 20px 0;'>🖼️ Image Placeholder</div>"
     
-    return ""
+    return "<p>No image data available</p>"
+
 
 def _render_timeline_layout(content: Dict[str, Any]) -> str:
     """Render timeline layout"""
     items = content.get('timeline_items', [])
+    
+    if not items:
+        return "<p>No timeline data available</p>"
     
     html = "<div style='border-left: 3px solid #4F81BD; padding-left: 20px; margin: 20px 0;'>"
     for item in items:
@@ -201,6 +233,7 @@ def _render_timeline_layout(content: Dict[str, Any]) -> str:
     html += "</div>"
     return html
 
+
 def _render_conclusion_layout(content: Dict[str, Any]) -> str:
     """Render conclusion layout"""
     html = ""
@@ -212,11 +245,3 @@ def _render_conclusion_layout(content: Dict[str, Any]) -> str:
         html += f"<p style='text-align: center; font-size: 16px; margin: 10px 0;'>✓ {bullet}</p>"
     
     return html
-
-def display_all_slides_preview(slides_data: List[Dict[str, Any]]):
-    """Display all slides in preview mode"""
-    st.subheader("📊 Slide Preview")
-    
-    for idx, slide_data in enumerate(slides_data, 1):
-        with st.expander(f"📝 Slide {idx} ({slide_data.get('layout', 'content')})", expanded=(idx == 1)):
-            render_slide_preview(slide_data, idx)
