@@ -1,715 +1,344 @@
 """
-PDF Generator Module - Fixed Font Handling
-Uses only ReportLab built-in fonts
+Enhanced PDF Generator - Generates from slide data, not screenshots
 """
-
+from typing import Dict, List, Any, Optional
+from pathlib import Path
 import io
-from typing import Dict, List, Optional
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import LETTER, landscape
-from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, PageBreak, 
-    Table, TableStyle, KeepTogether
-)
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib.colors import HexColor, black, grey, blue
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+from reportlab.pdfgen import canvas
+import logging
 
+logger = logging.getLogger(__name__)
 
-class PDFGenerator:
-    """Generates PDF from presentation content using built-in fonts"""
+class EnhancedPDFGenerator:
+    """Professional PDF generator from slide data"""
     
-    # ReportLab built-in fonts only
-    FONTS = {
-        'title': 'Helvetica-Bold',
-        'subtitle': 'Helvetica',
-        'body': 'Helvetica',
-        'bold': 'Helvetica-Bold',
-        'italic': 'Helvetica-Oblique'
-    }
+    def __init__(self, page_size=A4):
+        self.page_size = page_size
+        self.styles = getSampleStyleSheet()
+        self._setup_custom_styles()
     
-    def __init__(self, template_data: Optional[Dict] = None):
-        self.template_data = template_data or self._get_defaults()
-        self._setup_colors()
-    
-    def _get_defaults(self) -> Dict:
-        return {
-            'colors': {
-                'background': '#FFFFFF',
-                'text_primary': '#1F2937',
-                'text_secondary': '#6B7280',
-                'primary': '#2563EB',
-                'accent': '#EF4444'
-            },
-            'fonts': {
-                'title': {'size': 32},
-                'subtitle': {'size': 22},
-                'body': {'size': 14}
-            }
-        }
-    
-    def _setup_colors(self):
-        """Setup colors from template"""
-        template_colors = self.template_data.get('colors', {})
+    def _setup_custom_styles(self):
+        """Create custom paragraph styles"""
+        self.styles.add(ParagraphStyle(
+            name='SlideTitle',
+            parent=self.styles['Heading1'],
+            fontSize=24,
+            textColor=HexColor('#4F81BD'),
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        ))
         
-        self.bg_color = self._hex_to_color(
-            template_colors.get('background', '#FFFFFF')
-        )
-        self.text_color = self._hex_to_color(
-            template_colors.get('text_primary', '#1F2937')
-        )
-        self.secondary_color = self._hex_to_color(
-            template_colors.get('text_secondary', '#6B7280')
-        )
-        self.accent_color = self._hex_to_color(
-            template_colors.get('primary', '#2563EB')
-        )
-        self.highlight_color = self._hex_to_color(
-            template_colors.get('accent', '#EF4444')
-        )
-    
-    def _hex_to_color(self, hex_str: str):
-        """Convert hex to reportlab color"""
-        try:
-            hex_str = hex_str.lstrip('#')
-            r = int(hex_str[0:2], 16) / 255.0
-            g = int(hex_str[2:4], 16) / 255.0
-            b = int(hex_str[4:6], 16) / 255.0
-            return colors.Color(r, g, b)
-        except:
-            return colors.black
-    
-    def _get_font_size(self, font_type: str, default: int) -> int:
-        """Get font size from template or use default"""
-        fonts = self.template_data.get('fonts', {})
-        font_info = fonts.get(font_type, {})
-        return font_info.get('size', default)
-    
-    def generate_pdf(self, content: Dict) -> io.BytesIO:
-        """Generate PDF from presentation content"""
-        output = io.BytesIO()
+        self.styles.add(ParagraphStyle(
+            name='SlideContent',
+            parent=self.styles['Normal'],
+            fontSize=12,
+            textColor=black,
+            spaceAfter=10,
+            alignment=TA_LEFT,
+            fontName='Helvetica'
+        ))
         
+        self.styles.add(ParagraphStyle(
+            name='BulletPoint',
+            parent=self.styles['Normal'],
+            fontSize=11,
+            textColor=black,
+            leftIndent=20,
+            spaceAfter=5,
+            fontName='Helvetica'
+        ))
+        
+        self.styles.add(ParagraphStyle(
+            name='Quote',
+            parent=self.styles['Normal'],
+            fontSize=14,
+            textColor=grey,
+            leftIndent=40,
+            rightIndent=40,
+            spaceAfter=15,
+            alignment=TA_JUSTIFY,
+            fontName='Helvetica-Oblique'
+        ))
+        
+        self.styles.add(ParagraphStyle(
+            name='Metric',
+            parent=self.styles['Normal'],
+            fontSize=28,
+            textColor=HexColor('#4F81BD'),
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        ))
+    
+    def generate(self, slides_data: List[Dict[str, Any]], output_path: Optional[str] = None) -> io.BytesIO:
+        """
+        Generate PDF from slide data
+        
+        Args:
+            slides_data: List of slide dictionaries
+            output_path: Optional file path to save PDF
+        
+        Returns:
+            BytesIO object with PDF
+        """
+        buffer = io.BytesIO()
         doc = SimpleDocTemplate(
-            output,
-            pagesize=landscape(LETTER),
-            rightMargin=0.75*inch,
-            leftMargin=0.75*inch,
-            topMargin=0.75*inch,
-            bottomMargin=0.75*inch
+            buffer,
+            pagesize=self.page_size,
+            rightMargin=72,
+            leftMargin=72,
+            topMargin=72,
+            bottomMargin=72
         )
         
         story = []
-        slides = content.get('slides', [])
         
-        for i, slide in enumerate(slides):
+        for slide_data in slides_data:
             try:
-                slide_elements = self._create_slide_elements(slide)
+                slide_elements = self._create_slide_elements(slide_data)
                 story.extend(slide_elements)
-                
-                # Page break between slides
-                if i < len(slides) - 1:
-                    story.append(PageBreak())
+                story.append(Spacer(1, 0.5*inch))  # Space between slides
+                story.append(self._add_page_break())
             except Exception as e:
-                print(f"Error creating slide {i}: {e}")
+                logger.error(f"Failed to create slide {slide_data.get('slide_number')}: {e}", exc_info=True)
                 # Add error placeholder
-                story.append(Paragraph(
-                    f"[Slide {i+1}: Error rendering]",
-                    self._get_body_style()
-                ))
-                if i < len(slides) - 1:
-                    story.append(PageBreak())
+                story.append(Paragraph(f"⚠️ Slide {slide_data.get('slide_number')} - Generation Error", self.styles['SlideTitle']))
+                story.append(Spacer(1, 0.2*inch))
         
-        # Build PDF
-        try:
-            doc.build(
-                story,
-                onFirstPage=self._add_background,
-                onLaterPages=self._add_background
-            )
-        except Exception as e:
-            print(f"Error building PDF with background: {e}")
-            # Fallback without background
-            doc.build(story)
+        doc.build(story)
+        buffer.seek(0)
         
-        output.seek(0)
-        return output
+        return buffer
     
-    def _add_background(self, canvas, doc):
-        """Add background color"""
-        try:
-            canvas.saveState()
-            canvas.setFillColor(self.bg_color)
-            canvas.rect(0, 0, doc.pagesize[0], doc.pagesize[1], fill=True, stroke=False)
-            canvas.restoreState()
-        except:
-            pass
-    
-    def _get_title_style(self) -> ParagraphStyle:
-        """Get title paragraph style"""
-        return ParagraphStyle(
-            name='PDFTitle',
-            fontName=self.FONTS['title'],
-            fontSize=self._get_font_size('title', 32),
-            textColor=self.text_color,
-            alignment=TA_CENTER,
-            spaceAfter=20,
-            spaceBefore=10,
-            leading=38
-        )
-    
-    def _get_subtitle_style(self) -> ParagraphStyle:
-        """Get subtitle paragraph style"""
-        return ParagraphStyle(
-            name='PDFSubtitle',
-            fontName=self.FONTS['subtitle'],
-            fontSize=self._get_font_size('subtitle', 22),
-            textColor=self.secondary_color,
-            alignment=TA_CENTER,
-            spaceAfter=15,
-            leading=26
-        )
-    
-    def _get_body_style(self) -> ParagraphStyle:
-        """Get body paragraph style"""
-        return ParagraphStyle(
-            name='PDFBody',
-            fontName=self.FONTS['body'],
-            fontSize=self._get_font_size('body', 14),
-            textColor=self.text_color,
-            alignment=TA_LEFT,
-            spaceAfter=10,
-            leftIndent=20,
-            leading=18
-        )
-    
-    def _get_bullet_style(self) -> ParagraphStyle:
-        """Get bullet point style"""
-        return ParagraphStyle(
-            name='PDFBullet',
-            fontName=self.FONTS['body'],
-            fontSize=self._get_font_size('body', 14),
-            textColor=self.text_color,
-            alignment=TA_LEFT,
-            spaceAfter=8,
-            leftIndent=40,
-            leading=18
-        )
-    
-    def _clean_text(self, text: str) -> str:
-        """Clean text for PDF rendering"""
-        if not text:
-            return ""
-        # Remove or escape special characters
-        text = str(text)
-        text = text.replace('&', '&amp;')
-        text = text.replace('<', '&lt;')
-        text = text.replace('>', '&gt;')
-        return text
-    
-    def _create_slide_elements(self, slide: Dict) -> List:
-        """Create PDF elements for a slide"""
+    def _create_slide_elements(self, slide_data: Dict[str, Any]) -> List:
+        """Create PDF elements for a single slide"""
         elements = []
-        layout = slide.get('layout', 'content')
+        layout = slide_data.get('layout', 'content')
         
-        # Top spacing
-        elements.append(Spacer(1, 0.2*inch))
-        
-        # Route to layout handler
-        handlers = {
-            'title': self._create_title_slide,
-            'content': self._create_content_slide,
-            'two_column': self._create_two_column_slide,
-            'chart': self._create_chart_slide,
-            'table': self._create_table_slide,
-            'quote': self._create_quote_slide,
-            'metrics': self._create_metrics_slide,
-            'timeline': self._create_timeline_slide,
-            'comparison': self._create_comparison_slide,
-            'conclusion': self._create_conclusion_slide,
-            'image': self._create_image_slide
-        }
-        
-        handler = handlers.get(layout, self._create_content_slide)
-        elements.extend(handler(slide))
-        
-        return elements
-    
-    def _create_title_slide(self, slide: Dict) -> List:
-        """Create title slide"""
-        elements = []
-        
-        elements.append(Spacer(1, 1.5*inch))
-        
-        # Title
-        title = self._clean_text(slide.get('title', 'Presentation'))
-        elements.append(Paragraph(title, self._get_title_style()))
-        
-        # Decorative line
-        elements.append(Spacer(1, 0.2*inch))
-        line_table = Table([['']], colWidths=[3*inch], rowHeights=[3])
-        line_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), self.accent_color),
-        ]))
-        elements.append(line_table)
-        
-        # Subtitle
-        subtitle = self._clean_text(slide.get('subtitle', ''))
-        if subtitle:
-            elements.append(Spacer(1, 0.3*inch))
-            elements.append(Paragraph(subtitle, self._get_subtitle_style()))
-        
-        return elements
-    
-    def _create_content_slide(self, slide: Dict) -> List:
-        """Create content slide with bullets"""
-        elements = []
-        
-        # Title
-        title = self._clean_text(slide.get('title', ''))
-        if title:
-            elements.append(Paragraph(title, self._get_title_style()))
+        # Add slide title
+        if slide_data.get('title'):
+            elements.append(Paragraph(slide_data['title'], self.styles['SlideTitle']))
             elements.append(Spacer(1, 0.2*inch))
         
-        # Content
-        content_data = slide.get('content', {})
-        
-        # Bullet points
-        bullets = content_data.get('bullet_points', [])
-        for bullet in bullets:
-            bullet_text = self._clean_text(bullet)
-            elements.append(Paragraph(f"• {bullet_text}", self._get_bullet_style()))
-        
-        # Main text
-        main_text = content_data.get('main_text', '')
-        if main_text:
-            elements.append(Paragraph(self._clean_text(main_text), self._get_body_style()))
+        # Route to specific layout handler
+        handler = getattr(self, f'_handle_{layout}_pdf', self._handle_content_pdf)
+        elements.extend(handler(slide_data))
         
         return elements
     
-    def _create_two_column_slide(self, slide: Dict) -> List:
-        """Create two-column slide"""
+    def _handle_content_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle content layout"""
         elements = []
+        content = slide_data.get('content', {})
         
-        # Title
-        title = self._clean_text(slide.get('title', ''))
-        if title:
-            elements.append(Paragraph(title, self._get_title_style()))
-            elements.append(Spacer(1, 0.2*inch))
+        if content.get('main_text'):
+            elements.append(Paragraph(content['main_text'], self.styles['SlideContent']))
+            elements.append(Spacer(1, 0.1*inch))
         
-        content_data = slide.get('content', {})
+        for bullet in content.get('bullet_points', []):
+            elements.append(Paragraph(f"• {bullet}", self.styles['BulletPoint']))
         
-        # Build left column
-        left_content = content_data.get('left_column', [])
-        left_paras = []
-        if isinstance(left_content, list):
-            for item in left_content:
-                left_paras.append(Paragraph(f"• {self._clean_text(item)}", self._get_bullet_style()))
-        elif left_content:
-            left_paras.append(Paragraph(self._clean_text(str(left_content)), self._get_body_style()))
-        
-        # Build right column
-        right_content = content_data.get('right_column', [])
-        right_paras = []
-        if isinstance(right_content, list):
-            for item in right_content:
-                right_paras.append(Paragraph(f"• {self._clean_text(item)}", self._get_bullet_style()))
-        elif right_content:
-            right_paras.append(Paragraph(self._clean_text(str(right_content)), self._get_body_style()))
+        return elements
+    
+    def _handle_two_column_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle two-column layout"""
+        elements = []
+        content = slide_data.get('content', {})
         
         # Create two-column table
-        if left_paras or right_paras:
-            col_table = Table(
-                [[left_paras, right_paras]],
-                colWidths=[4*inch, 4*inch]
-            )
-            col_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-            ]))
-            elements.append(col_table)
+        left_content = content.get('left_column', '')
+        right_content = content.get('right_column', '')
         
-        return elements
-    
-    def _create_chart_slide(self, slide: Dict) -> List:
-        """Create chart slide (placeholder)"""
-        elements = []
+        # Format as lists if strings
+        if isinstance(left_content, str):
+            left_items = [left_content]
+        else:
+            left_items = left_content
         
-        # Title
-        title = self._clean_text(slide.get('title', ''))
-        if title:
-            elements.append(Paragraph(title, self._get_title_style()))
-            elements.append(Spacer(1, 0.3*inch))
+        if isinstance(right_content, str):
+            right_items = [right_content]
+        else:
+            right_items = right_content
         
-        # Chart placeholder
-        content_data = slide.get('content', {})
-        chart_info = content_data.get('chart', {})
-        chart_title = chart_info.get('title', 'Chart')
-        chart_type = chart_info.get('type', 'bar')
-        
-        # Create chart representation table
-        chart_box = Table(
-            [[f"📊 {chart_type.upper()} CHART: {self._clean_text(chart_title)}"]],
-            colWidths=[7*inch],
-            rowHeights=[2*inch]
-        )
-        chart_box.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTNAME', (0, 0), (-1, -1), self.FONTS['bold']),
-            ('FONTSIZE', (0, 0), (-1, -1), 16),
-            ('TEXTCOLOR', (0, 0), (-1, -1), self.accent_color),
-            ('BOX', (0, 0), (-1, -1), 2, self.accent_color),
-            ('BACKGROUND', (0, 0), (-1, -1), colors.Color(0.95, 0.95, 0.98)),
-        ]))
-        elements.append(chart_box)
-        
-        # Chart data if available
-        labels = chart_info.get('labels', [])
-        if labels:
-            elements.append(Spacer(1, 0.2*inch))
-            labels_text = ", ".join([str(l) for l in labels])
-            elements.append(Paragraph(f"Data: {labels_text}", self._get_body_style()))
-        
-        return elements
-    
-    def _create_table_slide(self, slide: Dict) -> List:
-        """Create table slide"""
-        elements = []
-        
-        # Title
-        title = self._clean_text(slide.get('title', ''))
-        if title:
-            elements.append(Paragraph(title, self._get_title_style()))
-            elements.append(Spacer(1, 0.2*inch))
-        
-        content_data = slide.get('content', {})
-        table_info = content_data.get('table', {})
-        
-        headers = table_info.get('headers', [])
-        rows = table_info.get('rows', [])
-        
-        if headers:
-            # Build table data
-            table_data = [[self._clean_text(h) for h in headers]]
-            for row in rows:
-                table_data.append([self._clean_text(str(cell)) for cell in row])
-            
-            # Calculate column widths
-            num_cols = len(headers)
-            col_width = 7.5*inch / num_cols
-            
-            # Create table
-            pdf_table = Table(table_data, colWidths=[col_width] * num_cols)
-            
-            # Style
-            style = [
-                # Header
-                ('BACKGROUND', (0, 0), (-1, 0), self.accent_color),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), self.FONTS['bold']),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                # Data rows
-                ('FONTNAME', (0, 1), (-1, -1), self.FONTS['body']),
-                ('FONTSIZE', (0, 1), (-1, -1), 10),
-                ('TEXTCOLOR', (0, 1), (-1, -1), self.text_color),
-                # Grid
-                ('GRID', (0, 0), (-1, -1), 1, colors.Color(0.7, 0.7, 0.7)),
-                ('TOPPADDING', (0, 0), (-1, -1), 8),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        # Create table data
+        table_data = [
+            [
+                '\n'.join([f"• {item}" for item in left_items]),
+                '\n'.join([f"• {item}" for item in right_items])
             ]
-            
-            # Alternate row colors
-            for i in range(1, len(table_data)):
-                if i % 2 == 0:
-                    style.append(('BACKGROUND', (0, i), (-1, i), colors.Color(0.95, 0.95, 0.95)))
-                else:
-                    style.append(('BACKGROUND', (0, i), (-1, i), colors.white))
-            
-            pdf_table.setStyle(TableStyle(style))
-            elements.append(pdf_table)
+        ]
         
+        table = Table(table_data, colWidths=[3.5*inch, 3.5*inch])
+        table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        
+        elements.append(table)
         return elements
     
-    def _create_quote_slide(self, slide: Dict) -> List:
-        """Create quote slide"""
+    def _handle_chart_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle chart layout"""
         elements = []
+        content = slide_data.get('content', {})
+        chart_data = content.get('chart', {})
         
-        content_data = slide.get('content', {})
-        quote = self._clean_text(content_data.get('quote', ''))
-        author = self._clean_text(content_data.get('quote_author', ''))
+        if chart_data.get('title'):
+            elements.append(Paragraph(f"📊 {chart_data['title']}", self.styles['SlideContent']))
+            elements.append(Spacer(1, 0.1*inch))
         
-        elements.append(Spacer(1, 1.2*inch))
+        if chart_data.get('description'):
+            elements.append(Paragraph(chart_data['description'], self.styles['SlideContent']))
+            elements.append(Spacer(1, 0.1*inch))
         
-        # Quote style
-        quote_style = ParagraphStyle(
-            name='Quote',
-            fontName=self.FONTS['italic'],
-            fontSize=24,
-            textColor=self.text_color,
-            alignment=TA_CENTER,
-            spaceAfter=20,
-            leading=32,
-            leftIndent=40,
-            rightIndent=40
-        )
-        
-        # Quote with marks
-        elements.append(Paragraph(f'"{quote}"', quote_style))
-        
-        # Author
-        if author:
-            author_style = ParagraphStyle(
-                name='Author',
-                fontName=self.FONTS['body'],
-                fontSize=16,
-                textColor=self.secondary_color,
-                alignment=TA_RIGHT,
-                rightIndent=60
-            )
-            elements.append(Spacer(1, 0.3*inch))
-            elements.append(Paragraph(f"— {author}", author_style))
-        
-        return elements
-    
-    def _create_metrics_slide(self, slide: Dict) -> List:
-        """Create metrics/KPI slide"""
-        elements = []
-        
-        # Title
-        title = self._clean_text(slide.get('title', 'Key Metrics'))
-        elements.append(Paragraph(title, self._get_title_style()))
-        elements.append(Spacer(1, 0.4*inch))
-        
-        content_data = slide.get('content', {})
-        metrics = content_data.get('key_metrics', [])
-        
-        if metrics:
-            # Build metrics table
-            values = []
-            labels = []
+        # Add chart data as table
+        if chart_data.get('data'):
+            table_data = [['Metric', 'Value']]
+            for key, value in chart_data['data'].items():
+                table_data.append([key, str(value)])
             
-            for metric in metrics[:4]:
-                values.append(Paragraph(
-                    f"<b>{self._clean_text(str(metric.get('value', '')))}</b>",
-                    ParagraphStyle(
-                        name='MetricValue',
-                        fontName=self.FONTS['bold'],
-                        fontSize=32,
-                        textColor=self.highlight_color,
-                        alignment=TA_CENTER
-                    )
-                ))
-                labels.append(Paragraph(
-                    self._clean_text(metric.get('label', '')),
-                    ParagraphStyle(
-                        name='MetricLabel',
-                        fontName=self.FONTS['body'],
-                        fontSize=12,
-                        textColor=self.secondary_color,
-                        alignment=TA_CENTER
-                    )
-                ))
-            
-            # Create table
-            col_width = 7*inch / len(metrics[:4])
-            metric_table = Table(
-                [values, labels],
-                colWidths=[col_width] * len(metrics[:4])
-            )
-            metric_table.setStyle(TableStyle([
+            table = Table(table_data, colWidths=[3*inch, 3*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), HexColor('#4F81BD')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('TOPPADDING', (0, 0), (-1, -1), 20),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 20),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('GRID', (0, 0), (-1, -1), 1, black)
             ]))
-            elements.append(metric_table)
+            elements.append(table)
         
         return elements
     
-    def _create_timeline_slide(self, slide: Dict) -> List:
-        """Create timeline slide"""
+    def _handle_table_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle table layout"""
         elements = []
+        content = slide_data.get('content', {})
+        table_data = content.get('table', {})
         
-        # Title
-        title = self._clean_text(slide.get('title', 'Timeline'))
-        elements.append(Paragraph(title, self._get_title_style()))
-        elements.append(Spacer(1, 0.3*inch))
-        
-        content_data = slide.get('content', {})
-        items = content_data.get('timeline_items', [])
-        
-        if items:
-            # Build timeline table
-            for item in items[:6]:
-                date = self._clean_text(item.get('date', ''))
-                event = self._clean_text(item.get('event', ''))
-                
-                row_table = Table(
-                    [[Paragraph(f"<b>{date}</b>", ParagraphStyle(
-                        name='TimelineDate',
-                        fontName=self.FONTS['bold'],
-                        fontSize=14,
-                        textColor=self.accent_color
-                    )),
-                    Paragraph(event, self._get_body_style())]],
-                    colWidths=[2*inch, 5.5*inch]
-                )
-                row_table.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                ]))
-                elements.append(row_table)
-                elements.append(Spacer(1, 0.15*inch))
-        
-        return elements
-    
-    def _create_comparison_slide(self, slide: Dict) -> List:
-        """Create comparison slide"""
-        elements = []
-        
-        # Title
-        title = self._clean_text(slide.get('title', 'Comparison'))
-        elements.append(Paragraph(title, self._get_title_style()))
-        elements.append(Spacer(1, 0.3*inch))
-        
-        content_data = slide.get('content', {})
-        items = content_data.get('comparison_items', [])
-        
-        if len(items) >= 2:
-            # Build comparison columns
-            left_paras = []
-            right_paras = []
+        if table_data.get('headers'):
+            data = [table_data['headers']]
+            data.extend(table_data.get('data', []))
             
-            # Left item
-            item1 = items[0]
-            left_paras.append(Paragraph(
-                f"<b>{self._clean_text(item1.get('title', 'Option 1'))}</b>",
-                ParagraphStyle(name='CompTitle', fontName=self.FONTS['bold'], fontSize=18, 
-                              textColor=self.accent_color, alignment=TA_CENTER, spaceAfter=10)
-            ))
-            for pro in item1.get('pros', []):
-                left_paras.append(Paragraph(f"✓ {self._clean_text(pro)}", 
-                    ParagraphStyle(name='Pro', fontName=self.FONTS['body'], fontSize=12, 
-                                  textColor=colors.Color(0, 0.5, 0), leftIndent=10)))
-            for con in item1.get('cons', []):
-                left_paras.append(Paragraph(f"✗ {self._clean_text(con)}", 
-                    ParagraphStyle(name='Con', fontName=self.FONTS['body'], fontSize=12, 
-                                  textColor=colors.Color(0.7, 0, 0), leftIndent=10)))
-            
-            # Right item
-            item2 = items[1]
-            right_paras.append(Paragraph(
-                f"<b>{self._clean_text(item2.get('title', 'Option 2'))}</b>",
-                ParagraphStyle(name='CompTitle2', fontName=self.FONTS['bold'], fontSize=18, 
-                              textColor=self.accent_color, alignment=TA_CENTER, spaceAfter=10)
-            ))
-            for pro in item2.get('pros', []):
-                right_paras.append(Paragraph(f"✓ {self._clean_text(pro)}", 
-                    ParagraphStyle(name='Pro2', fontName=self.FONTS['body'], fontSize=12, 
-                                  textColor=colors.Color(0, 0.5, 0), leftIndent=10)))
-            for con in item2.get('cons', []):
-                right_paras.append(Paragraph(f"✗ {self._clean_text(con)}", 
-                    ParagraphStyle(name='Con2', fontName=self.FONTS['body'], fontSize=12, 
-                                  textColor=colors.Color(0.7, 0, 0), leftIndent=10)))
-            
-            # Create table
-            comp_table = Table(
-                [[left_paras, 
-                  Paragraph("VS", ParagraphStyle(name='VS', fontName=self.FONTS['bold'], fontSize=24, 
-                                                 textColor=self.highlight_color, alignment=TA_CENTER)),
-                  right_paras]],
-                colWidths=[3.2*inch, 0.6*inch, 3.2*inch]
-            )
-            comp_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+            table = Table(data, colWidths=[2*inch] * len(table_data['headers']))
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), HexColor('#4F81BD')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('GRID', (0, 0), (-1, -1), 1, black)
             ]))
-            elements.append(comp_table)
+            elements.append(table)
         
         return elements
     
-    def _create_conclusion_slide(self, slide: Dict) -> List:
-        """Create conclusion slide"""
+    def _handle_quote_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle quote layout"""
         elements = []
+        content = slide_data.get('content', {})
         
-        elements.append(Spacer(1, 1*inch))
+        quote_text = content.get('quote', '')
+        quote_author = content.get('quote_author', '')
         
-        # Title
-        title = self._clean_text(slide.get('title', 'Thank You'))
-        elements.append(Paragraph(title, self._get_title_style()))
+        elements.append(Paragraph(f""{quote_text}"", self.styles['Quote']))
         
-        # Decorative line
-        elements.append(Spacer(1, 0.2*inch))
-        line_table = Table([['']], colWidths=[2*inch], rowHeights=[3])
-        line_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), self.accent_color),
-        ]))
-        elements.append(line_table)
-        
-        elements.append(Spacer(1, 0.3*inch))
-        
-        # Bullet points
-        content_data = slide.get('content', {})
-        bullets = content_data.get('bullet_points', [])
-        
-        centered_style = ParagraphStyle(
-            name='CenteredBullet',
-            fontName=self.FONTS['body'],
-            fontSize=self._get_font_size('body', 14),
-            textColor=self.text_color,
-            alignment=TA_CENTER,
-            spaceAfter=8
-        )
-        
-        for bullet in bullets:
-            elements.append(Paragraph(f"• {self._clean_text(bullet)}", centered_style))
-        
-        # Call to action
-        cta = content_data.get('call_to_action', '')
-        if cta:
-            elements.append(Spacer(1, 0.3*inch))
-            cta_style = ParagraphStyle(
-                name='CTA',
-                fontName=self.FONTS['bold'],
-                fontSize=16,
-                textColor=self.highlight_color,
-                alignment=TA_CENTER
-            )
-            elements.append(Paragraph(self._clean_text(cta), cta_style))
+        if quote_author:
+            elements.append(Paragraph(f"— {quote_author}", self.styles['BulletPoint']))
         
         return elements
     
-    def _create_image_slide(self, slide: Dict) -> List:
-        """Create image placeholder slide"""
+    def _handle_metrics_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle metrics/KPI layout"""
         elements = []
+        content = slide_data.get('content', {})
+        metrics = content.get('key_metrics', [])
         
-        # Title
-        title = self._clean_text(slide.get('title', ''))
-        if title:
-            elements.append(Paragraph(title, self._get_title_style()))
-            elements.append(Spacer(1, 0.3*inch))
+        # Create metrics table
+        table_data = []
+        for metric in metrics:
+            table_data.append([
+                Paragraph(metric.get('value', 'N/A'), self.styles['Metric']),
+                Paragraph(metric.get('label', ''), self.styles['SlideContent'])
+            ])
         
-        content_data = slide.get('content', {})
-        image_desc = self._clean_text(content_data.get('image_description', 'Image'))
-        
-        # Image placeholder
-        img_box = Table(
-            [[f"🖼️ IMAGE: {image_desc}"]],
-            colWidths=[7*inch],
-            rowHeights=[3*inch]
-        )
-        img_box.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        table = Table(table_data, colWidths=[2.5*inch, 3.5*inch])
+        table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTNAME', (0, 0), (-1, -1), self.FONTS['body']),
-            ('FONTSIZE', (0, 0), (-1, -1), 18),
-            ('TEXTCOLOR', (0, 0), (-1, -1), self.secondary_color),
-            ('BOX', (0, 0), (-1, -1), 2, self.secondary_color),
-            ('BACKGROUND', (0, 0), (-1, -1), colors.Color(0.95, 0.95, 0.95)),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
         ]))
-        elements.append(img_box)
+        elements.append(table)
         
         return elements
+    
+    def _handle_image_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle image layout"""
+        elements = []
+        content = slide_data.get('content', {})
+        image_data = content.get('image', '')
+        
+        if image_data:
+            try:
+                # Handle base64 image
+                if isinstance(image_data, str) and image_data.startswith('data:image'):
+                    import base64
+                    import re
+                    match = re.search(r'data:image/\w+;base64,(.+)', image_data)
+                    if match:
+                        img_bytes = base64.b64decode(match.group(1))
+                        img_buffer = io.BytesIO(img_bytes)
+                        img = Image(img_buffer, width=5*inch, height=3.5*inch)
+                        elements.append(img)
+                elif Path(image_data).exists():
+                    img = Image(image_data, width=5*inch, height=3.5*inch)
+                    elements.append(img)
+            except Exception as e:
+                logger.error(f"Failed to add image to PDF: {e}")
+                elements.append(Paragraph("🖼️ Image placeholder (failed to load)", self.styles['SlideContent']))
+        
+        return elements
+    
+    def _handle_timeline_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle timeline layout"""
+        elements = []
+        content = slide_data.get('content', {})
+        timeline_items = content.get('timeline_items', [])
+        
+        for item in timeline_items:
+            date = item.get('date', '')
+            desc = item.get('description', '')
+            
+            elements.append(Paragraph(f"📅 {date}", self.styles['SlideContent']))
+            elements.append(Paragraph(desc, self.styles['BulletPoint']))
+            elements.append(Spacer(1, 0.1*inch))
+        
+        return elements
+    
+    def _handle_conclusion_pdf(self, slide_data: Dict[str, Any]) -> List:
+        """Handle conclusion layout"""
+        elements = []
+        content = slide_data.get('content', {})
+        
+        if content.get('main_text'):
+            elements.append(Paragraph(content['main_text'], self.styles['SlideTitle']))
+            elements.append(Spacer(1, 0.1*inch))
+        
+        for bullet in content.get('bullet_points', []):
+            elements.append(Paragraph(f"✓ {bullet}", self.styles['BulletPoint']))
+        
+        return elements
+    
+    def _add_page_break(self):
+        """Add page break"""
+        from reportlab.platypus import PageBreak
+        return PageBreak()
