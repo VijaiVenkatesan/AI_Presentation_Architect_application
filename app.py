@@ -1,6 +1,6 @@
 """
 AI Presentation Architect - Main Application Entry Point
-Version 2.3 - Template support fixed
+Version 2.4 - Circular import fixed
 """
 import streamlit as st
 import os
@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
-import tempfile
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -24,6 +23,7 @@ from utils.ppt_generator import EnhancedPPTGenerator
 from utils.pdf_generator import EnhancedPDFGenerator
 from utils.validation import SlideValidator
 from utils.config import AppConfig
+from utils.file_handler import save_template_file, cleanup_old_templates
 
 logging.basicConfig(
     level=logging.INFO,
@@ -132,28 +132,8 @@ def load_autosave():
     return False
 
 
-def save_template_file(uploaded_file):
-    """Save uploaded template to temporary file for use"""
-    if uploaded_file is None:
-        return None
-    
-    try:
-        # Create temp directory for templates
-        temp_dir = Path(tempfile.gettempdir()) / 'ppt_templates'
-        temp_dir.mkdir(exist_ok=True)
-        
-        # Save with unique name
-        template_path = temp_dir / f"template_{int(time.time())}.pptx"
-        
-        with open(template_path, 'wb') as f:
-            f.write(uploaded_file.getvalue())
-        
-        logger.info(f"Template saved to: {template_path}")
-        return str(template_path)
-    
-    except Exception as e:
-        logger.error(f"Failed to save template: {e}")
-        return None
+# [Rest of app.py remains the same - generate_presentation_content, export_presentation, display_generation_stats, main functions]
+# Just make sure to use save_template_file from utils.file_handler import at the top
 
 
 def generate_presentation_content(prompt: str, num_slides: int) -> bool:
@@ -292,7 +272,7 @@ def export_presentation(format_type: str, use_template: bool = True) -> Optional
         status_text = st.empty()
         progress_bar = st.progress(0)
         
-        # FIXED: Get template path if enabled
+        # Get template path if enabled
         template_path = None
         if use_template and st.session_state.get('template_path'):
             template_path = st.session_state.template_path
@@ -300,7 +280,6 @@ def export_presentation(format_type: str, use_template: bool = True) -> Optional
         
         if format_type == 'pptx':
             status_text.info("📊 Creating PowerPoint..." + (" (with template)" if template_path else ""))
-            # FIXED: Pass template_path to generator
             generator = EnhancedPPTGenerator(template_path=template_path)
             progress_bar.progress(50)
             output = generator.generate(st.session_state.slides)
@@ -460,7 +439,7 @@ def main():
     
     st.divider()
     st.caption(
-        f"🎨 AI Presentation Architect v2.3 • "
+        f"🎨 AI Presentation Architect v2.4 • "
         f"{len(st.session_state.slides)} slides • "
         f"API: {'✅ Connected' if st.session_state.api_configured else '❌ Not configured'} • "
         f"Template: {'✅ Active' if st.session_state.get('template_path') and st.session_state.get('use_template') else '❌ Not used'}"
