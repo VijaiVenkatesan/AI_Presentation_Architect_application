@@ -44,7 +44,7 @@ def render_sidebar() -> Dict:
         num_slides = st.slider(
             "Number of Slides",
             min_value=3,
-            max_value=20,
+            max_value=100,
             value=st.session_state.get('num_slides', 10)
         )
         
