@@ -6,7 +6,8 @@ from typing import Dict, List, Any, Optional
 from pathlib import Path
 import io
 from pptx import Presentation
-from pptx.util import Inches, Pt, RGBColor
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 import base64
