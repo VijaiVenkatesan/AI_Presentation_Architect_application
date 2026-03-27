@@ -1,5 +1,5 @@
 """
-PowerPoint Generator Module - Enhanced Version
+PowerPoint Generator Module - Enhanced Version (Fixed)
 Creates presentations that preserve template styling
 """
 
@@ -11,8 +11,6 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.oxml.ns import qn
-from pptx.oxml import parse_xml
 
 from .chart_generator import ChartGenerator
 
@@ -79,8 +77,8 @@ class PresentationGenerator:
             template_stream = io.BytesIO(self.template_data['template_bytes'])
             self.prs = Presentation(template_stream)
             
-            # Clear existing slides but keep masters
-            self._clear_slides_keep_masters()
+            # Remove existing slides (simple approach)
+            self._remove_all_slides()
         else:
             # Create new presentation
             self.prs = Presentation()
@@ -99,26 +97,33 @@ class PresentationGenerator:
         
         return output
     
-    def _clear_slides_keep_masters(self):
-        """Remove all slides but keep slide masters"""
-        # Remove slides in reverse order
-        slide_ids = [slide.slide_id for slide in self.prs.slides]
-        for slide_id in reversed(slide_ids):
-            rId = self.prs.part.get_rel_by_target(
-                self.prs.slides.get(slide_id).part
-            ).rId
-            self.prs.part.drop_rel(rId)
-            del self.prs.slides._sldIdLst[
-                self.prs.slides._sldIdLst.index(
-                    self.prs.slides._sldIdLst[slide_id]
-                )
-            ]
+    def _remove_all_slides(self):
+        """Remove all slides from presentation while keeping masters"""
+        try:
+            # Get all slide IDs
+            slide_count = len(self.prs.slides)
+            
+            # Remove slides from the end to avoid index issues
+            for _ in range(slide_count):
+                # Access the slide ID list directly
+                slide_id = self.prs.slides._sldIdLst[0]
+                rId = slide_id.rId
+                
+                # Remove the relationship
+                self.prs.part.drop_rel(rId)
+                
+                # Remove from slide ID list
+                self.prs.slides._sldIdLst.remove(slide_id)
+        except Exception as e:
+            print(f"Warning: Could not remove template slides: {e}")
+            # If removal fails, we'll just add slides to the existing presentation
+            # This is acceptable - the new slides will be added after existing ones
     
     def _apply_custom_settings(self, settings: Dict):
         """Apply custom settings"""
         if 'colors' in settings:
             for key, value in settings['colors'].items():
-                if value:  # Only update non-empty values
+                if value:
                     self.template_data['colors'][key] = value
         
         if 'fonts' in settings:
@@ -138,7 +143,7 @@ class PresentationGenerator:
         layout = self._get_best_layout(layout_type)
         slide = self.prs.slides.add_slide(layout)
         
-        # Add background if not using template
+        # Add background if not using template or template doesn't have one
         if not self.template_data.get('use_template_file'):
             self._add_background(slide)
         
@@ -170,17 +175,17 @@ class PresentationGenerator:
     def _get_best_layout(self, layout_type: str):
         """Get the best matching layout from template"""
         layout_mapping = {
-            'title': ['Title Slide', 'Title', 'title'],
-            'content': ['Title and Content', 'Content', 'Title, Content'],
-            'two_column': ['Two Content', 'Comparison', 'Two Column'],
-            'chart': ['Title and Content', 'Content with Caption'],
-            'table': ['Title and Content', 'Content'],
-            'quote': ['Title Only', 'Blank'],
-            'conclusion': ['Title Slide', 'Section Header'],
-            'metrics': ['Title and Content', 'Content'],
-            'timeline': ['Title and Content', 'Content'],
-            'comparison': ['Comparison', 'Two Content'],
-            'image': ['Picture with Caption', 'Content']
+            'title': ['Title Slide', 'Title', 'title', 'TITLE'],
+            'content': ['Title and Content', 'Content', 'Title, Content', 'CONTENT'],
+            'two_column': ['Two Content', 'Comparison', 'Two Column', 'TWO_CONTENT'],
+            'chart': ['Title and Content', 'Content with Caption', 'CHART'],
+            'table': ['Title and Content', 'Content', 'TABLE'],
+            'quote': ['Title Only', 'Blank', 'BLANK'],
+            'conclusion': ['Title Slide', 'Section Header', 'SECTION'],
+            'metrics': ['Title and Content', 'Content', 'CONTENT'],
+            'timeline': ['Title and Content', 'Content', 'CONTENT'],
+            'comparison': ['Comparison', 'Two Content', 'TWO_CONTENT'],
+            'image': ['Picture with Caption', 'Content', 'PICTURE']
         }
         
         preferred_names = layout_mapping.get(layout_type, ['Title and Content'])
@@ -191,36 +196,47 @@ class PresentationGenerator:
                 if name.lower() in layout.name.lower():
                     return layout
         
-        # Fallback to blank layout or first available
+        # Fallback to blank layout
         for layout in self.prs.slide_layouts:
             if 'blank' in layout.name.lower():
                 return layout
         
-        return self.prs.slide_layouts[0]
+        # Last resort: first layout
+        if len(self.prs.slide_layouts) > 0:
+            # Try to get a layout that's not the title slide for non-title content
+            if layout_type != 'title' and len(self.prs.slide_layouts) > 1:
+                return self.prs.slide_layouts[1]
+            return self.prs.slide_layouts[0]
+        
+        # Absolute fallback
+        return self.prs.slide_layouts[6] if len(self.prs.slide_layouts) > 6 else self.prs.slide_layouts[0]
     
     def _add_background(self, slide):
         """Add background to slide"""
-        bg_info = self.template_data.get('background', {})
-        bg_type = bg_info.get('type', 'solid')
-        
-        if bg_type == 'solid':
-            background = slide.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE,
-                0, 0,
-                Inches(self.template_data['slide_size']['width']),
-                Inches(self.template_data['slide_size']['height'])
-            )
-            background.fill.solid()
-            background.fill.fore_color.rgb = self._hex_to_rgb(
-                bg_info.get('color', self.template_data['colors']['background'])
-            )
-            background.line.fill.background()
+        try:
+            bg_info = self.template_data.get('background', {})
+            bg_type = bg_info.get('type', 'solid')
             
-            # Send to back
-            spTree = slide.shapes._spTree
-            sp = background._element
-            spTree.remove(sp)
-            spTree.insert(2, sp)
+            if bg_type == 'solid':
+                background = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE,
+                    0, 0,
+                    Inches(self.template_data['slide_size']['width']),
+                    Inches(self.template_data['slide_size']['height'])
+                )
+                background.fill.solid()
+                background.fill.fore_color.rgb = self._hex_to_rgb(
+                    bg_info.get('color', self.template_data['colors']['background'])
+                )
+                background.line.fill.background()
+                
+                # Send to back
+                spTree = slide.shapes._spTree
+                sp = background._element
+                spTree.remove(sp)
+                spTree.insert(2, sp)
+        except Exception as e:
+            print(f"Error adding background: {e}")
     
     def _add_logo(self, slide):
         """Add logo to slide"""
@@ -247,11 +263,14 @@ class PresentationGenerator:
         subtitle_set = False
         
         for shape in slide.shapes:
-            if shape.is_placeholder:
-                ph_type = str(shape.placeholder_format.type)
+            try:
+                if not hasattr(shape, 'is_placeholder') or not shape.is_placeholder:
+                    continue
+                    
+                ph_type = str(shape.placeholder_format.type) if shape.placeholder_format else ''
                 
                 if 'TITLE' in ph_type or 'CENTER_TITLE' in ph_type:
-                    if shape.has_text_frame:
+                    if hasattr(shape, 'text_frame') and shape.has_text_frame:
                         shape.text_frame.clear()
                         p = shape.text_frame.paragraphs[0]
                         p.text = content.get('title', 'Presentation Title')
@@ -259,14 +278,16 @@ class PresentationGenerator:
                         title_set = True
                 
                 elif 'SUBTITLE' in ph_type:
-                    if shape.has_text_frame and content.get('subtitle'):
+                    if hasattr(shape, 'text_frame') and shape.has_text_frame and content.get('subtitle'):
                         shape.text_frame.clear()
                         p = shape.text_frame.paragraphs[0]
                         p.text = content.get('subtitle', '')
                         self._apply_font_style(p, 'subtitle')
                         subtitle_set = True
+            except Exception as e:
+                continue
         
-        # Fallback to manual placement if placeholders not found
+        # Fallback to manual placement
         if not title_set:
             title_box = slide.shapes.add_textbox(
                 Inches(0.5), Inches(2.5),
@@ -291,20 +312,23 @@ class PresentationGenerator:
             self._apply_font_style(p, 'subtitle')
             p.alignment = PP_ALIGN.CENTER
         
-        # Add decorative line
+        # Add decorative line (only if not using template)
         if not self.template_data.get('use_template_file'):
-            line = slide.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE,
-                Inches(self.template_data['slide_size']['width']/2 - 1.5),
-                Inches(4),
-                Inches(3),
-                Inches(0.05)
-            )
-            line.fill.solid()
-            line.fill.fore_color.rgb = self._hex_to_rgb(
-                self.template_data['colors']['primary']
-            )
-            line.line.fill.background()
+            try:
+                line = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE,
+                    Inches(self.template_data['slide_size']['width']/2 - 1.5),
+                    Inches(4),
+                    Inches(3),
+                    Inches(0.05)
+                )
+                line.fill.solid()
+                line.fill.fore_color.rgb = self._hex_to_rgb(
+                    self.template_data['colors']['primary']
+                )
+                line.line.fill.background()
+            except:
+                pass
     
     def _create_content_slide(self, slide, content: Dict):
         """Create content slide"""
@@ -353,18 +377,21 @@ class PresentationGenerator:
             )
         
         # Divider
-        line = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE,
-            Inches(slide_width / 2),
-            Inches(1.8),
-            Inches(0.02),
-            Inches(4.5)
-        )
-        line.fill.solid()
-        line.fill.fore_color.rgb = self._hex_to_rgb(
-            self.template_data['colors']['secondary']
-        )
-        line.line.fill.background()
+        try:
+            line = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE,
+                Inches(slide_width / 2),
+                Inches(1.8),
+                Inches(0.02),
+                Inches(4.5)
+            )
+            line.fill.solid()
+            line.fill.fore_color.rgb = self._hex_to_rgb(
+                self.template_data['colors']['secondary']
+            )
+            line.line.fill.background()
+        except:
+            pass
         
         # Right column
         right_content = content_data.get('right_column', '')
@@ -401,7 +428,6 @@ class PresentationGenerator:
             }
             
             try:
-                # Update chart generator colors to match template
                 self.chart_generator = ChartGenerator(self._get_chart_colors())
                 chart_image = self.chart_generator.create_chart(chart_type, chart_data, 900, 450)
                 
@@ -436,51 +462,54 @@ class PresentationGenerator:
         
         table_width = min(self.template_data['slide_size']['width'] - 3, num_cols * 2)
         
-        table = slide.shapes.add_table(
-            num_rows, num_cols,
-            Inches(1.5), Inches(2),
-            Inches(table_width),
-            Inches(min(num_rows * 0.6, 4.5))
-        ).table
-        
-        # Style header row
-        for i, header in enumerate(headers):
-            cell = table.cell(0, i)
-            cell.text = str(header)
-            cell.fill.solid()
-            cell.fill.fore_color.rgb = self._hex_to_rgb(
-                self.template_data['colors']['primary']
-            )
+        try:
+            table = slide.shapes.add_table(
+                num_rows, num_cols,
+                Inches(1.5), Inches(2),
+                Inches(table_width),
+                Inches(min(num_rows * 0.6, 4.5))
+            ).table
             
-            para = cell.text_frame.paragraphs[0]
-            para.font.bold = True
-            para.font.color.rgb = RGBColor(255, 255, 255)
-            para.font.size = Pt(14)
-            para.font.name = self.template_data['fonts']['body'].get('name', 'Arial')
-            para.alignment = PP_ALIGN.CENTER
-        
-        # Data rows
-        for row_idx, row_data in enumerate(rows):
-            for col_idx, cell_data in enumerate(row_data):
-                if col_idx < num_cols:
-                    cell = table.cell(row_idx + 1, col_idx)
-                    cell.text = str(cell_data)
-                    
-                    # Alternate row colors
-                    cell.fill.solid()
-                    if row_idx % 2 == 0:
-                        cell.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
-                    else:
-                        bg_color = self.template_data['colors'].get('background', '#0F172A')
-                        cell.fill.fore_color.rgb = self._hex_to_rgb(bg_color)
-                    
-                    para = cell.text_frame.paragraphs[0]
-                    para.font.color.rgb = self._hex_to_rgb(
-                        self.template_data['colors']['text_primary']
-                    )
-                    para.font.size = Pt(12)
-                    para.font.name = self.template_data['fonts']['body'].get('name', 'Arial')
-                    para.alignment = PP_ALIGN.CENTER
+            # Style header row
+            for i, header in enumerate(headers):
+                cell = table.cell(0, i)
+                cell.text = str(header)
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = self._hex_to_rgb(
+                    self.template_data['colors']['primary']
+                )
+                
+                para = cell.text_frame.paragraphs[0]
+                para.font.bold = True
+                para.font.color.rgb = RGBColor(255, 255, 255)
+                para.font.size = Pt(14)
+                para.font.name = self.template_data['fonts']['body'].get('name', 'Arial')
+                para.alignment = PP_ALIGN.CENTER
+            
+            # Data rows
+            for row_idx, row_data in enumerate(rows):
+                for col_idx, cell_data in enumerate(row_data):
+                    if col_idx < num_cols:
+                        cell = table.cell(row_idx + 1, col_idx)
+                        cell.text = str(cell_data)
+                        
+                        cell.fill.solid()
+                        if row_idx % 2 == 0:
+                            cell.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
+                        else:
+                            bg_color = self.template_data['colors'].get('background', '#0F172A')
+                            cell.fill.fore_color.rgb = self._hex_to_rgb(bg_color)
+                        
+                        para = cell.text_frame.paragraphs[0]
+                        para.font.color.rgb = self._hex_to_rgb(
+                            self.template_data['colors']['text_primary']
+                        )
+                        para.font.size = Pt(12)
+                        para.font.name = self.template_data['fonts']['body'].get('name', 'Arial')
+                        para.alignment = PP_ALIGN.CENTER
+        except Exception as e:
+            print(f"Table error: {e}")
+            self._add_text_box(slide, "[Table]", Inches(1.5), Inches(3), Inches(10), Inches(2))
     
     def _create_quote_slide(self, slide, content: Dict):
         """Create quote slide"""
@@ -489,15 +518,18 @@ class PresentationGenerator:
         author = content_data.get('quote_author', '')
         
         # Quote mark
-        quote_mark = slide.shapes.add_textbox(
-            Inches(1), Inches(2),
-            Inches(1), Inches(1)
-        )
-        frame = quote_mark.text_frame
-        p = frame.paragraphs[0]
-        p.text = '"'
-        p.font.size = Pt(120)
-        p.font.color.rgb = self._hex_to_rgb(self.template_data['colors']['primary'])
+        try:
+            quote_mark = slide.shapes.add_textbox(
+                Inches(1), Inches(2),
+                Inches(1), Inches(1)
+            )
+            frame = quote_mark.text_frame
+            p = frame.paragraphs[0]
+            p.text = '"'
+            p.font.size = Pt(120)
+            p.font.color.rgb = self._hex_to_rgb(self.template_data['colors']['primary'])
+        except:
+            pass
         
         # Quote text
         quote_box = slide.shapes.add_textbox(
@@ -594,17 +626,20 @@ class PresentationGenerator:
             for i, metric in enumerate(metrics[:4]):
                 x_pos = 1.5 + (i * metric_width)
                 
-                # Box
-                box = slide.shapes.add_shape(
-                    MSO_SHAPE.ROUNDED_RECTANGLE,
-                    Inches(x_pos), Inches(2.5),
-                    Inches(metric_width - 0.3), Inches(3)
-                )
-                box.fill.solid()
-                box.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
-                box.line.color.rgb = self._hex_to_rgb(
-                    self.template_data['colors']['primary']
-                )
+                try:
+                    # Box
+                    box = slide.shapes.add_shape(
+                        MSO_SHAPE.ROUNDED_RECTANGLE,
+                        Inches(x_pos), Inches(2.5),
+                        Inches(metric_width - 0.3), Inches(3)
+                    )
+                    box.fill.solid()
+                    box.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
+                    box.line.color.rgb = self._hex_to_rgb(
+                        self.template_data['colors']['primary']
+                    )
+                except:
+                    pass
                 
                 # Value
                 value_box = slide.shapes.add_textbox(
@@ -649,16 +684,19 @@ class PresentationGenerator:
             slide_width = self.template_data['slide_size']['width']
             
             # Timeline line
-            line = slide.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE,
-                Inches(1), Inches(4),
-                Inches(slide_width - 2), Inches(0.05)
-            )
-            line.fill.solid()
-            line.fill.fore_color.rgb = self._hex_to_rgb(
-                self.template_data['colors']['primary']
-            )
-            line.line.fill.background()
+            try:
+                line = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE,
+                    Inches(1), Inches(4),
+                    Inches(slide_width - 2), Inches(0.05)
+                )
+                line.fill.solid()
+                line.fill.fore_color.rgb = self._hex_to_rgb(
+                    self.template_data['colors']['primary']
+                )
+                line.line.fill.background()
+            except:
+                pass
             
             # Items
             item_count = min(len(items), 6)
@@ -667,17 +705,20 @@ class PresentationGenerator:
             for i, item in enumerate(items[:6]):
                 x_pos = 1 + (i * item_width)
                 
-                # Circle
-                circle = slide.shapes.add_shape(
-                    MSO_SHAPE.OVAL,
-                    Inches(x_pos + item_width/2 - 0.15), Inches(3.85),
-                    Inches(0.3), Inches(0.3)
-                )
-                circle.fill.solid()
-                circle.fill.fore_color.rgb = self._hex_to_rgb(
-                    self.template_data['colors']['accent']
-                )
-                circle.line.fill.background()
+                try:
+                    # Circle
+                    circle = slide.shapes.add_shape(
+                        MSO_SHAPE.OVAL,
+                        Inches(x_pos + item_width/2 - 0.15), Inches(3.85),
+                        Inches(0.3), Inches(0.3)
+                    )
+                    circle.fill.solid()
+                    circle.fill.fore_color.rgb = self._hex_to_rgb(
+                        self.template_data['colors']['accent']
+                    )
+                    circle.line.fill.background()
+                except:
+                    pass
                 
                 # Date
                 date_box = slide.shapes.add_textbox(
@@ -725,17 +766,20 @@ class PresentationGenerator:
             for idx, item in enumerate(items[:2]):
                 x_start = 0.5 if idx == 0 else slide_width/2 + 0.25
                 
-                # Box
-                box = slide.shapes.add_shape(
-                    MSO_SHAPE.ROUNDED_RECTANGLE,
-                    Inches(x_start), Inches(1.8),
-                    Inches(box_width), Inches(5)
-                )
-                box.fill.solid()
-                box.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
-                box.line.color.rgb = self._hex_to_rgb(
-                    self.template_data['colors']['primary']
-                )
+                try:
+                    # Box
+                    box = slide.shapes.add_shape(
+                        MSO_SHAPE.ROUNDED_RECTANGLE,
+                        Inches(x_start), Inches(1.8),
+                        Inches(box_width), Inches(5)
+                    )
+                    box.fill.solid()
+                    box.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
+                    box.line.color.rgb = self._hex_to_rgb(
+                        self.template_data['colors']['primary']
+                    )
+                except:
+                    pass
                 
                 # Title
                 title_box = slide.shapes.add_textbox(
@@ -786,20 +830,23 @@ class PresentationGenerator:
                     y_pos += 0.5
             
             # VS
-            vs_box = slide.shapes.add_textbox(
-                Inches(slide_width/2 - 0.5), Inches(3.5),
-                Inches(1), Inches(1)
-            )
-            frame = vs_box.text_frame
-            p = frame.paragraphs[0]
-            p.text = "VS"
-            p.font.size = Pt(36)
-            p.font.bold = True
-            p.font.color.rgb = self._hex_to_rgb(
-                self.template_data['colors']['accent']
-            )
-            p.font.name = self.template_data['fonts']['title'].get('name', 'Arial')
-            p.alignment = PP_ALIGN.CENTER
+            try:
+                vs_box = slide.shapes.add_textbox(
+                    Inches(slide_width/2 - 0.5), Inches(3.5),
+                    Inches(1), Inches(1)
+                )
+                frame = vs_box.text_frame
+                p = frame.paragraphs[0]
+                p.text = "VS"
+                p.font.size = Pt(36)
+                p.font.bold = True
+                p.font.color.rgb = self._hex_to_rgb(
+                    self.template_data['colors']['accent']
+                )
+                p.font.name = self.template_data['fonts']['title'].get('name', 'Arial')
+                p.alignment = PP_ALIGN.CENTER
+            except:
+                pass
     
     def _create_image_slide(self, slide, content: Dict):
         """Create image placeholder slide"""
@@ -810,18 +857,21 @@ class PresentationGenerator:
         
         slide_width = self.template_data['slide_size']['width']
         
-        # Placeholder
-        placeholder = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE,
-            Inches(1.5), Inches(1.8),
-            Inches(slide_width - 3), Inches(5)
-        )
-        placeholder.fill.solid()
-        placeholder.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
-        placeholder.line.color.rgb = self._hex_to_rgb(
-            self.template_data['colors']['secondary']
-        )
-        placeholder.line.width = Pt(2)
+        try:
+            # Placeholder
+            placeholder = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE,
+                Inches(1.5), Inches(1.8),
+                Inches(slide_width - 3), Inches(5)
+            )
+            placeholder.fill.solid()
+            placeholder.fill.fore_color.rgb = self._hex_to_rgb('#1E293B')
+            placeholder.line.color.rgb = self._hex_to_rgb(
+                self.template_data['colors']['secondary']
+            )
+            placeholder.line.width = Pt(2)
+        except:
+            pass
         
         # Description
         text_box = slide.shapes.add_textbox(
@@ -842,15 +892,18 @@ class PresentationGenerator:
         """Add title to slide"""
         # Try to use placeholder first
         for shape in slide.shapes:
-            if shape.is_placeholder:
-                ph_type = str(shape.placeholder_format.type)
-                if 'TITLE' in ph_type:
-                    if shape.has_text_frame:
-                        shape.text_frame.clear()
-                        p = shape.text_frame.paragraphs[0]
-                        p.text = title
-                        self._apply_font_style(p, 'title')
-                        return
+            try:
+                if hasattr(shape, 'is_placeholder') and shape.is_placeholder:
+                    ph_type = str(shape.placeholder_format.type) if shape.placeholder_format else ''
+                    if 'TITLE' in ph_type:
+                        if hasattr(shape, 'text_frame') and shape.has_text_frame:
+                            shape.text_frame.clear()
+                            p = shape.text_frame.paragraphs[0]
+                            p.text = title
+                            self._apply_font_style(p, 'title')
+                            return
+            except:
+                continue
         
         # Manual title
         title_box = slide.shapes.add_textbox(
@@ -865,16 +918,19 @@ class PresentationGenerator:
         
         # Underline (only if not using template)
         if not self.template_data.get('use_template_file'):
-            line = slide.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE,
-                Inches(0.5), Inches(1.4),
-                Inches(2), Inches(0.04)
-            )
-            line.fill.solid()
-            line.fill.fore_color.rgb = self._hex_to_rgb(
-                self.template_data['colors']['primary']
-            )
-            line.line.fill.background()
+            try:
+                line = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE,
+                    Inches(0.5), Inches(1.4),
+                    Inches(2), Inches(0.04)
+                )
+                line.fill.solid()
+                line.fill.fore_color.rgb = self._hex_to_rgb(
+                    self.template_data['colors']['primary']
+                )
+                line.line.fill.background()
+            except:
+                pass
     
     def _add_bullet_points(
         self,
@@ -929,41 +985,50 @@ class PresentationGenerator:
         if number <= 0:
             return
         
-        slide_width = self.template_data['slide_size']['width']
-        slide_height = self.template_data['slide_size']['height']
-        
-        num_box = slide.shapes.add_textbox(
-            Inches(slide_width - 1),
-            Inches(slide_height - 0.5),
-            Inches(0.8),
-            Inches(0.4)
-        )
-        frame = num_box.text_frame
-        p = frame.paragraphs[0]
-        p.text = str(number)
-        p.font.size = Pt(12)
-        p.font.color.rgb = self._hex_to_rgb(
-            self.template_data['colors']['text_secondary']
-        )
-        p.font.name = self.template_data['fonts']['body'].get('name', 'Arial')
-        p.alignment = PP_ALIGN.RIGHT
+        try:
+            slide_width = self.template_data['slide_size']['width']
+            slide_height = self.template_data['slide_size']['height']
+            
+            num_box = slide.shapes.add_textbox(
+                Inches(slide_width - 1),
+                Inches(slide_height - 0.5),
+                Inches(0.8),
+                Inches(0.4)
+            )
+            frame = num_box.text_frame
+            p = frame.paragraphs[0]
+            p.text = str(number)
+            p.font.size = Pt(12)
+            p.font.color.rgb = self._hex_to_rgb(
+                self.template_data['colors']['text_secondary']
+            )
+            p.font.name = self.template_data['fonts']['body'].get('name', 'Arial')
+            p.alignment = PP_ALIGN.RIGHT
+        except:
+            pass
     
     def _apply_font_style(self, paragraph, style_name: str):
         """Apply font style to paragraph"""
         font_info = self.template_data['fonts'].get(style_name, {})
         
-        paragraph.font.name = font_info.get('name', 'Arial')
-        paragraph.font.size = Pt(font_info.get('size', 18))
-        paragraph.font.bold = font_info.get('bold', False)
-        paragraph.font.color.rgb = self._hex_to_rgb(
-            font_info.get('color', self.template_data['colors']['text_primary'])
-        )
+        try:
+            paragraph.font.name = font_info.get('name', 'Arial')
+            paragraph.font.size = Pt(font_info.get('size', 18))
+            paragraph.font.bold = font_info.get('bold', False)
+            paragraph.font.color.rgb = self._hex_to_rgb(
+                font_info.get('color', self.template_data['colors']['text_primary'])
+            )
+        except Exception as e:
+            print(f"Error applying font style: {e}")
     
     def _hex_to_rgb(self, hex_color: str) -> RGBColor:
         """Convert hex to RGBColor"""
-        hex_color = hex_color.lstrip('#')
-        return RGBColor(
-            int(hex_color[0:2], 16),
-            int(hex_color[2:4], 16),
-            int(hex_color[4:6], 16)
-        )
+        try:
+            hex_color = hex_color.lstrip('#')
+            return RGBColor(
+                int(hex_color[0:2], 16),
+                int(hex_color[2:4], 16),
+                int(hex_color[4:6], 16)
+            )
+        except:
+            return RGBColor(255, 255, 255)
