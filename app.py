@@ -1,6 +1,6 @@
 """
 AI Presentation Architect - Main Application Entry Point
-Version 2.1 - All fixes applied
+Version 2.2 - All bugs fixed
 """
 import streamlit as st
 import os
@@ -45,17 +45,29 @@ st.markdown("""
     .status-ready { background: #d4edda; color: #155724; }
     .status-processing { background: #fff3cd; color: #856404; }
     .export-section { background: #f8f9fa; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    .stDark .export-section { background: #262730; }
 </style>
 """, unsafe_allow_html=True)
 
 
 def initialize_session_state():
     defaults = {
-        'slides': [], 'presentation_title': '', 'presentation_topic': '',
-        'template_file': None, 'current_slide_index': 0, 'generation_in_progress': False,
-        'api_configured': False, 'llm_handler': None, 'config': None,
-        'validation_result': None, 'last_saved': None, 'groq_api_key': '',
-        'num_slides': 10, 'chat_history': [],
+        'slides': [],
+        'presentation_title': '',
+        'presentation_topic': '',
+        'template_file': None,
+        'current_slide_index': 0,
+        'generation_in_progress': False,
+        'api_configured': False,
+        'llm_handler': None,
+        'config': None,
+        'validation_result': None,
+        'last_saved': None,
+        'groq_api_key': '',
+        'num_slides': 10,
+        'chat_history': [],
+        'pending_message': None,
+        'use_template': True,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -111,6 +123,7 @@ def load_autosave():
                 st.session_state.presentation_topic = data.get('topic', '')
                 st.session_state.slides = data.get('slides', [])
                 st.session_state.last_saved = saved_time
+                logger.info(f"Loaded autosave from {saved_time}")
                 return True
         except Exception as e:
             logger.warning(f"Failed to load autosave: {e}")
@@ -137,11 +150,10 @@ Requirements:
 - Return valid JSON array with: slide_number, layout, title, content
 - Content must be an OBJECT with layout-specific fields
 
-Example format:
+Example:
 [
-    {{"slide_number": 1, "layout": "title", "title": "Main Title", "content": {{"subtitle": "Subtitle here"}}}},
-    {{"slide_number": 2, "layout": "content", "title": "Introduction", "content": {{"main_text": "Text here", "bullet_points": ["Point 1", "Point 2"]}}}},
-    {{"slide_number": 3, "layout": "chart", "title": "Data Chart", "content": {{"chart": {{"title": "Chart Title", "data": {{"2024": "50%", "2025": "75%"}}}}}}}}
+    {{"slide_number": 1, "layout": "title", "title": "Main Title", "content": {{"subtitle": "Subtitle"}}}},
+    {{"slide_number": 2, "layout": "content", "title": "Intro", "content": {{"main_text": "Text", "bullet_points": ["Point 1"]}}}}
 ]
 
 Return ONLY the JSON array, no markdown, no explanations."""
@@ -151,11 +163,9 @@ Return ONLY the JSON array, no markdown, no explanations."""
         if not outline_response:
             raise ValueError("Failed to generate outline - no response from LLM")
         
-        # Handle different response formats
         if isinstance(outline_response, list):
             slides_list = outline_response
         elif isinstance(outline_response, dict):
-            # Try common keys
             slides_list = outline_response.get('slides', outline_response.get('data', outline_response.get('presentation', [])))
             if not isinstance(slides_list, list):
                 slides_list = [outline_response]
@@ -178,32 +188,23 @@ Return ONLY the JSON array, no markdown, no explanations."""
             
             status_text.info(f"🔄 Slide {i+1}/{len(slides_to_process)}")
             
-            # Ensure content is a dict
             if 'content' not in slide_outline or not isinstance(slide_outline.get('content'), dict):
                 slide_outline['content'] = {}
             
-            # Generate detailed content for complex layouts
             layout = slide_outline.get('layout', 'content')
             if layout in ['chart', 'table', 'metrics', 'timeline']:
-                detail_prompt = f"""Expand this slide with detailed {layout} data:
+                detail_prompt = f"""Expand this slide with detailed {layout} content.
 Slide: {slide_outline.get('title', 'Untitled')}
 Topic: {prompt}
 
-Return JSON with content object containing:
-- For chart: {{"chart": {{"title": "...", "description": "...", "data": {{"key": "value"}}}}}}
-- For table: {{"table": {{"headers": ["Col1", "Col2"], "data": [["row1col1", "row1col2"]]}}}}
-- For metrics: {{"key_metrics": [{{"label": "Metric", "value": "100"}}]}}
-- For timeline: {{"timeline_items": [{{"date": "2024", "description": "Event"}}]}}
-
+Return JSON with content object containing appropriate fields for {layout} layout.
 Return ONLY JSON, no markdown."""
                 
                 detail_response = llm.generate_structured_response(prompt=detail_prompt)
                 if detail_response and isinstance(detail_response, dict):
-                    # Merge content
                     if 'content' in detail_response and isinstance(detail_response['content'], dict):
                         slide_outline['content'].update(detail_response['content'])
             
-            # Ensure required fields
             slide_outline['slide_number'] = i + 1
             if 'title' not in slide_outline:
                 slide_outline['title'] = f"Slide {i+1}"
@@ -255,7 +256,12 @@ def export_presentation(format_type: str) -> Optional[bytes]:
         validation = SlideValidator.validate_slides(st.session_state.slides)
         if validation['errors']:
             st.error("❌ Fix validation errors first")
+            for err in validation['errors'][:3]:
+                st.error(f"  • {err}")
             return None
+        
+        if validation['warnings']:
+            st.warning(f"⚠️ {len(validation['warnings'])} warnings - export may have issues")
         
         status_text = st.empty()
         progress_bar = st.progress(0)
@@ -282,24 +288,32 @@ def export_presentation(format_type: str) -> Optional[bytes]:
         return None
     finally:
         time.sleep(0.3)
-        if 'progress_bar' in locals(): progress_bar.empty()
-        if 'status_text' in locals(): status_text.empty()
+        if 'progress_bar' in locals():
+            progress_bar.empty()
+        if 'status_text' in locals():
+            status_text.empty()
 
 
 def display_generation_stats():
     slides = st.session_state.slides
-    if not slides: return
+    if not slides:
+        return
     col1, col2, col3, col4 = st.columns(4)
-    with col1: st.metric("📊 Slides", len(slides))
-    with col2: st.metric("🎨 Layouts", len({s.get('layout') for s in slides}))
-    with col3: st.metric("📈 Charts", sum(1 for s in slides if s.get('layout') == 'chart'))
-    with col4: st.metric("📋 Tables", sum(1 for s in slides if s.get('layout') == 'table'))
+    with col1:
+        st.metric("📊 Slides", len(slides))
+    with col2:
+        st.metric("🎨 Layouts", len({s.get('layout') for s in slides}))
+    with col3:
+        st.metric("📈 Charts", sum(1 for s in slides if s.get('layout') == 'chart'))
+    with col4:
+        st.metric("📋 Tables", sum(1 for s in slides if s.get('layout') == 'table'))
 
 
 def main():
     initialize_session_state()
     load_configuration()
-    if not st.session_state.slides: load_autosave()
+    if not st.session_state.slides:
+        load_autosave()
     
     sidebar_result = render_sidebar()
     
@@ -327,49 +341,83 @@ def main():
             display_generation_stats()
             st.divider()
             render_slide_editor()
+            if st.session_state.last_saved:
+                st.caption(f"💾 Auto-saved at {st.session_state.last_saved.strftime('%H:%M:%S')}")
     
     with tab2:
-        st.subheader("👁️ Preview")
+        st.subheader("👁️ Live Preview")
         if not st.session_state.slides:
             st.info("Generate slides first")
         else:
-            if st.button("🔄 Refresh"): st.rerun()
+            if st.button("🔄 Refresh Preview"):
+                st.rerun()
             st.divider()
             display_all_slides_preview(st.session_state.slides)
     
     with tab3:
-        st.subheader("💬 AI Chat")
+        st.subheader("💬 AI Chat Assistant")
         if not st.session_state.api_configured:
             st.warning("⚠️ Set GROQ_API_KEY to enable chat")
         else:
             render_chat_interface()
     
     with tab4:
-        st.subheader("📥 Export")
+        st.subheader("📥 Export Presentation")
         if not st.session_state.slides:
             st.info("Generate slides first")
         else:
             st.markdown('<div class="export-section">', unsafe_allow_html=True)
             if st.session_state.validation_result:
                 val = st.session_state.validation_result
-                if val['valid']: st.success("✅ Validation passed")
-                else: st.error(f"❌ {len(val['errors'])} errors")
+                if val['valid']:
+                    st.success("✅ All slides passed validation")
+                else:
+                    st.error(f"❌ {len(val['errors'])} error(s) found")
+                if val['warnings']:
+                    st.warning(f"⚠️ {len(val['warnings'])} warning(s)")
             st.divider()
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("📥 Export PPTX", type="primary", use_container_width=True):
+                st.markdown("### 📊 PowerPoint (.pptx)")
+                st.caption("Editable format with full layout support")
+                if st.button("📥 Export as PPTX", type="primary", use_container_width=True):
                     data = export_presentation('pptx')
                     if data:
-                        st.download_button("⬇️ Download", data, f"{st.session_state.presentation_title or 'presentation'}.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+                        st.download_button(
+                            label="⬇️ Download PPTX",
+                            data=data,
+                            file_name=f"{st.session_state.presentation_title or 'presentation'}.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                            use_container_width=True
+                        )
             with col2:
-                if st.button("📥 Export PDF", type="primary", use_container_width=True):
+                st.markdown("### 📄 PDF Document (.pdf)")
+                st.caption("Print-ready format")
+                if st.button("📥 Export as PDF", type="primary", use_container_width=True):
                     data = export_presentation('pdf')
                     if data:
-                        st.download_button("⬇️ Download", data, f"{st.session_state.presentation_title or 'presentation'}.pdf", "application/pdf")
+                        st.download_button(
+                            label="⬇️ Download PDF",
+                            data=data,
+                            file_name=f"{st.session_state.presentation_title or 'presentation'}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
             st.markdown('</div>', unsafe_allow_html=True)
+            with st.expander("💡 Export Tips"):
+                st.markdown("""
+                - **PPTX**: Best for editing in PowerPoint or Google Slides
+                - **PDF**: Best for sharing and printing
+                - Charts and tables render as native elements
+                - Speaker notes included in PPTX
+                """)
     
     st.divider()
-    st.caption(f"🎨 v2.1 • {len(st.session_state.slides)} slides • API: {'✅' if st.session_state.api_configured else '❌'}")
+    st.caption(
+        f"🎨 AI Presentation Architect v2.2 • "
+        f"{len(st.session_state.slides)} slides • "
+        f"API: {'✅ Connected' if st.session_state.api_configured else '❌ Not configured'}"
+    )
     
     if st.session_state.slides and st.session_state.last_saved:
         if (datetime.now() - st.session_state.last_saved).total_seconds() > 120:
@@ -380,6 +428,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        logger.critical(f"Crash: {e}", exc_info=True)
-        st.error("💥 Error occurred. Refresh page.")
+        logger.critical(f"Application crashed: {e}", exc_info=True)
+        st.error("💥 Application error occurred. Please refresh the page.")
         st.exception(e)
