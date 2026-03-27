@@ -307,84 +307,132 @@ def main():
             st.info("Generate content first to see preview")
     
     with tab4:
-        st.markdown("### 💾 Export Your Presentation")
+    st.markdown("### 💾 Export Your Presentation")
+    
+    if st.session_state.content:
+        content = st.session_state.content
         
-        if st.session_state.content:
-            content = st.session_state.content
+        # Import PDF generator
+        from utils.pdf_generator import PDFGenerator
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 📊 PowerPoint Export")
+            st.markdown("Download as .pptx file")
             
-            col1, col2 = st.columns(2)
+            if st.button("📥 Generate PowerPoint", use_container_width=True):
+                with st.spinner("Creating PowerPoint..."):
+                    template_data = st.session_state.template_data or template_analyzer._get_default_template()
+                    
+                    # Apply custom settings
+                    custom_settings = {}
+                    if config.get('colors'):
+                        custom_settings['colors'] = config['colors']
+                    if config.get('fonts'):
+                        custom_settings['fonts'] = {
+                            'title_size': config['fonts'].get('title_size', 44),
+                            'body_size': config['fonts'].get('body_size', 18),
+                            'font_family': config['fonts'].get('font_family', 'Arial')
+                        }
+                    
+                    generator = PresentationGenerator(template_data)
+                    pptx_file = generator.generate_presentation(content, custom_settings)
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"presentation_{timestamp}.pptx"
+                    
+                    st.download_button(
+                        label="⬇️ Download PPTX",
+                        data=pptx_file,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        use_container_width=True
+                    )
+                    
+                    st.success("✓ PowerPoint ready!")
+        
+        with col2:
+            st.markdown("#### 📄 PDF Export")
+            st.markdown("Download as .pdf file")
             
-            with col1:
-                st.markdown("#### PowerPoint Export")
-                st.markdown("Download your presentation as a .pptx file")
+            if st.button("📥 Generate PDF", use_container_width=True):
+                with st.spinner("Creating PDF..."):
+                    template_data = st.session_state.template_data or template_analyzer._get_default_template()
+                    
+                    pdf_generator = PDFGenerator(template_data)
+                    pdf_file = pdf_generator.generate_pdf(content)
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"presentation_{timestamp}.pdf"
+                    
+                    st.download_button(
+                        label="⬇️ Download PDF",
+                        data=pdf_file,
+                        file_name=filename,
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                    
+                    st.success("✓ PDF ready!")
+        
+        st.divider()
+        
+        # Template info
+        if st.session_state.template_data:
+            with st.expander("📋 Template Information", expanded=False):
+                td = st.session_state.template_data
                 
-                if st.button("📥 Generate PowerPoint", use_container_width=True):
-                    with st.spinner("Creating PowerPoint..."):
-                        template_data = st.session_state.template_data or template_analyzer._get_default_template()
-                        
-                        # Apply custom settings
-                        custom_settings = {}
-                        if config.get('colors'):
-                            custom_settings['colors'] = config['colors']
-                        if config.get('fonts'):
-                            custom_settings['fonts'] = {
-                                'title': {'size': config['fonts'].get('title_size', 44)},
-                                'body': {'size': config['fonts'].get('body_size', 18)}
-                            }
-                        
-                        generator = PresentationGenerator(template_data)
-                        pptx_file = generator.generate_presentation(content, custom_settings)
-                        
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        filename = f"presentation_{timestamp}.pptx"
-                        
-                        st.download_button(
-                            label="⬇️ Download PPTX",
-                            data=pptx_file,
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                            use_container_width=True
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown("**Colors**")
+                    for name, color in td.get('colors', {}).items():
+                        st.markdown(
+                            f'<div style="display:flex;align-items:center;gap:8px;">'
+                            f'<div style="width:20px;height:20px;background:{color};border-radius:4px;border:1px solid #ccc;"></div>'
+                            f'<span>{name}</span></div>',
+                            unsafe_allow_html=True
                         )
-            
-            with col2:
-                st.markdown("#### Export Options")
                 
-                st.markdown("**Include:**")
-                include_notes = st.checkbox("Speaker Notes", value=True)
-                include_outline = st.checkbox("Presentation Outline", value=False)
+                with col2:
+                    st.markdown("**Fonts**")
+                    for name, font in td.get('fonts', {}).items():
+                        st.markdown(f"- {name}: {font.get('name', 'Arial')} {font.get('size', 18)}pt")
                 
-                if include_outline:
-                    st.markdown("---")
-                    st.markdown("**Outline:**")
-                    for slide in content.get('slides', []):
-                        st.markdown(f"- **Slide {slide.get('slide_number')}**: {slide.get('title', 'Untitled')}")
-            
-            # Export summary
-            st.markdown("---")
-            st.markdown("### 📊 Export Summary")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Slides", len(content.get('slides', [])))
-            with col2:
-                charts = sum(1 for s in content.get('slides', []) if s.get('layout') == 'chart')
-                st.metric("Charts", charts)
-            with col3:
-                tables = sum(1 for s in content.get('slides', []) if s.get('layout') == 'table')
-                st.metric("Tables", tables)
-            with col4:
-                st.metric("Format", config.get('export_format', 'PPTX').split()[0])
+                with col3:
+                    st.markdown("**Other**")
+                    st.markdown(f"- Logo: {'✓' if td.get('has_logo') else '✗'}")
+                    st.markdown(f"- Background: {td.get('background', {}).get('type', 'solid')}")
+                    st.markdown(f"- Slide Size: {td.get('slide_size', {}).get('width', 13.33):.1f}\" × {td.get('slide_size', {}).get('height', 7.5):.1f}\"")
         
-        else:
-            st.info("Generate content first to export")
-            
-            st.markdown("""
-            ### How to Export:
-            1. Go to the **Generate** tab
-            2. Enter your presentation topic
-            3. Click **Generate**
-            4. Return here to download
-            """)
+        st.divider()
+        
+        # Export summary
+        st.markdown("### 📊 Export Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Slides", len(content.get('slides', [])))
+        with col2:
+            charts = sum(1 for s in content.get('slides', []) if s.get('layout') == 'chart')
+            st.metric("Charts", charts)
+        with col3:
+            tables = sum(1 for s in content.get('slides', []) if s.get('layout') == 'table')
+            st.metric("Tables", tables)
+        with col4:
+            st.metric("Template", "Custom" if st.session_state.template_data and st.session_state.template_data.get('use_template_file') else "Default")
+    
+    else:
+        st.info("Generate content first to export")
+        
+        st.markdown("""
+        ### How to Export:
+        1. Go to the **Generate** tab
+        2. Enter your presentation topic
+        3. Click **Generate**
+        4. Return here to download as **PPTX** or **PDF**
+        """)
 
 
 if __name__ == "__main__":
