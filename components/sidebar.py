@@ -1,9 +1,10 @@
 """
 Sidebar Configuration Component
-Fixed: API key hidden when in secrets, template override option
+Fixed: Template upload and usage
 """
 import streamlit as st
 from typing import Dict
+from app import save_template_file
 
 def render_sidebar() -> Dict:
     result = {'generate': False, 'topic': '', 'num_slides': 10}
@@ -44,33 +45,47 @@ def render_sidebar() -> Dict:
         num_slides = st.slider(
             "Number of Slides",
             min_value=3,
-            max_value=100,
+            max_value=20,
             value=st.session_state.get('num_slides', 10)
         )
         
-        # Template upload
+        # Template upload - FIXED
+        st.subheader("📁 Template (Optional)")
         template_file = st.file_uploader(
-            "📁 Upload Template (Optional)",
+            "Upload PowerPoint Template",
             type=['pptx'],
-            help="Upload a PowerPoint template to use"
+            help="Upload a .pptx file to use as template"
         )
         
         if template_file:
-            st.session_state.template_file = template_file
-            st.success(f"✅ Template uploaded: {template_file.name}")
+            # Save template to temp file
+            template_path = save_template_file(template_file)
+            if template_path:
+                st.session_state.template_file = template_file
+                st.session_state.template_path = template_path
+                st.success(f"✅ Template uploaded: {template_file.name}")
+                
+                # Show template info
+                st.info(f"📊 Size: {template_file.size / 1024:.1f} KB")
+        else:
+            st.session_state.template_file = None
+            st.session_state.template_path = None
         
-        # Template override option
+        # Template usage toggle - FIXED
         st.divider()
-        if st.session_state.get('template_file'):
+        if st.session_state.get('template_path'):
             st.session_state.use_template = st.checkbox(
-                "Use uploaded template",
-                value=st.session_state.get('use_template', True)
+                "✅ Use uploaded template",
+                value=st.session_state.get('use_template', True),
+                help="Apply template formatting to exported PPTX"
             )
-            if not st.session_state.use_template:
-                st.session_state.template_file = None
-                st.info("📝 Will use default PowerPoint template")
+            if st.session_state.use_template:
+                st.success("🎨 Template will be applied to export")
+            else:
+                st.info("📝 Using default PowerPoint template")
         else:
             st.session_state.use_template = False
+            st.info("📝 No template uploaded - using default")
         
         # Generate button
         st.divider()
@@ -113,8 +128,10 @@ def render_sidebar() -> Dict:
         else:
             st.warning("⚠️ API Not Configured")
         
-        if st.session_state.get('template_file') and st.session_state.get('use_template'):
+        if st.session_state.get('template_path') and st.session_state.get('use_template'):
             st.success("✅ Custom template active")
+        elif st.session_state.get('template_path'):
+            st.info("ℹ️ Template uploaded (enable in checkbox)")
         
         # Quick actions
         st.divider()
@@ -133,6 +150,7 @@ def render_sidebar() -> Dict:
                 st.session_state.presentation_topic = ''
                 st.session_state.current_slide_index = 0
                 st.session_state.template_file = None
+                st.session_state.template_path = None
                 st.session_state.use_template = False
                 st.rerun()
         
@@ -144,14 +162,15 @@ def render_sidebar() -> Dict:
             1. Enter your Groq API key (or set in secrets)
             2. Enter a presentation topic
             3. Choose number of slides (3-20)
-            4. Optional: Upload a PPTX template
-            5. Click "Generate Presentation"
+            4. **Optional**: Upload a PPTX template
+            5. **Enable** "Use uploaded template" checkbox
+            6. Click "Generate Presentation"
             
-            ### Tips
-            - Be specific with your topic for better results
-            - Use templates for consistent branding
-            - Edit slides in the Editor tab
-            - Export to PPTX or PDF when done
+            ### Template Tips
+            - Upload a .pptx file with your brand colors
+            - Template layouts will be matched automatically
+            - Check the checkbox to enable template usage
+            - Template is applied during export, not preview
             """)
     
     return result
