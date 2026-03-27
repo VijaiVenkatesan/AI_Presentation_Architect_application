@@ -2,13 +2,13 @@
 import streamlit as st
 from typing import Dict, List, Any
 
-def render_slide_preview(slide_ Dict[str, Any], idx: int):
+
+def render_slide_preview(slide_data: Dict[str, Any], idx: int):
     """Render a single slide preview - FIXED contrast"""
     layout = slide_data.get('layout', 'content')
     title = slide_data.get('title', '')
     content = slide_data.get('content', {})
     
-    # FIXED: High contrast colors for dark mode
     html = f'''<div style="background:#ffffff;border:2px solid #4F81BD;border-radius:8px;padding:40px;margin:20px 0;min-height:400px;box-shadow:0 4px 12px rgba(0,0,0,0.15);font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a">'''
     
     if title:
@@ -41,11 +41,11 @@ def render_slide_preview(slide_ Dict[str, Any], idx: int):
 
 def display_all_slides_preview(slides_data: List[Dict[str, Any]]):
     """Display all slides in preview mode"""
-    if not slides_
+    if not slides_data:
         st.info("No slides to preview")
         return
     for i, sd in enumerate(slides_data, 1):
-        with st.expander(f"📝 Slide {i} ({sd.get('layout','content')})", expanded=(i==1)):
+        with st.expander(f"Slide {i} ({sd.get('layout','content')})", expanded=(i==1)):
             render_slide_preview(sd, i)
 
 
@@ -61,8 +61,10 @@ def _render_content(c: Dict[str, Any]) -> str:
 def _render_two_col(c: Dict[str, Any]) -> str:
     l = c.get('left_column', []) or []
     r = c.get('right_column', []) or []
-    if isinstance(l, str): l = [l]
-    if isinstance(r, str): r = [r]
+    if isinstance(l, str):
+        l = [l]
+    if isinstance(r, str):
+        r = [r]
     lh = "".join([f"<p style='margin:8px 0;color:#1a1a1a'>• {x}</p>" for x in l])
     rh = "".join([f"<p style='margin:8px 0;color:#1a1a1a'>• {x}</p>" for x in r])
     return f"<div style='display:flex;gap:30px'><div style='flex:1;background:#f8f9fa;padding:15px;border-radius:8px'>{lh}</div><div style='flex:1;background:#f8f9fa;padding:15px;border-radius:8px'>{rh}</div></div>"
