@@ -1,6 +1,6 @@
 """
 AI Presentation Architect - Main Application Entry Point
-Enhanced version with complete layout support, validation, and error handling
+Version 2.0 - Fixed all import and configuration issues
 """
 import streamlit as st
 import os
@@ -79,9 +79,6 @@ st.markdown("""
         padding: 1rem;
         margin: 1rem 0;
     }
-    st-expander {
-        margin: 0.5rem 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,6 +101,9 @@ def initialize_session_state():
         'error_messages': [],
         'success_messages': [],
         'last_saved': None,
+        'groq_api_key': '',
+        'num_slides': 10,
+        'chat_history': [],
     }
     
     for key, value in defaults.items():
@@ -130,8 +130,11 @@ def load_configuration():
         return True
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}", exc_info=True)
-        st.error(f"⚠️ Configuration error: {str(e)}")
-        return False
+        st.warning(f"⚠️ Configuration warning: {str(e)}")
+        st.session_state.config = AppConfig()
+        st.session_state.llm_handler = LLMHandler()
+        st.session_state.api_configured = False
+        return True
 
 
 def auto_save_presentation():
@@ -145,10 +148,8 @@ def auto_save_presentation():
             'version': '2.0'
         }
         
-        # Save to session (temporary) and optionally to file
         st.session_state.last_saved = datetime.now()
         
-        # Optional: Save to local file for recovery
         cache_dir = Path('.cache')
         cache_dir.mkdir(exist_ok=True)
         save_path = cache_dir / 'autosave.json'
@@ -171,7 +172,6 @@ def load_autosave():
             with open(cache_path) as f:
                 data = json.load(f)
             
-            # Only auto-load if recent (within 24 hours)
             saved_time = datetime.fromisoformat(data.get('timestamp', ''))
             if (datetime.now() - saved_time).total_seconds() < 86400:
                 st.session_state.presentation_title = data.get('title', '')
@@ -200,20 +200,18 @@ def generate_presentation_content(prompt: str, num_slides: int, template_data: O
         bool: Success status
     """
     if not st.session_state.api_configured:
-        st.error("❌ API not configured. Please set GROQ_API_KEY in secrets or environment.")
+        st.error("❌ API not configured. Please set GROQ_API_KEY in sidebar or environment.")
         return False
     
     try:
         llm = st.session_state.llm_handler
         
-        # Show progress
         progress_bar = st.progress(0)
         status_text = st.empty()
         
         status_text.info("🔄 Analyzing prompt and planning structure...")
         progress_bar.progress(20)
         
-        # Generate slide outline first
         outline_prompt = f"""
         Create a presentation outline for: {prompt}
         
@@ -241,29 +239,24 @@ def generate_presentation_content(prompt: str, num_slides: int, template_data: O
         progress_bar.progress(40)
         status_text.info("🔄 Generating detailed slide content...")
         
-        # Generate detailed content for each slide
         generated_slides = []
+        slides_list = outline_response.get('slides', outline_response) if isinstance(outline_response, dict) else outline_response
         
-        for i, slide_outline in enumerate(outline_response.get('slides', [])):
-            status_text.info(f"🔄 Generating slide {i+1}/{num_slides}: {slide_outline.get('title', 'Untitled')}")
+        if not isinstance(slides_list, list):
+            slides_list = [outline_response]
+        
+        for i, slide_outline in enumerate(slides_list[:num_slides]):
+            status_text.info(f"🔄 Generating slide {i+1}/{min(len(slides_list), num_slides)}: {slide_outline.get('title', 'Untitled')}")
             
             detail_prompt = f"""
             Expand this slide with rich, professional content:
             
-            Slide {slide_outline.get('slide_number')}: {slide_outline.get('title')}
+            Slide {slide_outline.get('slide_number', i+1)}: {slide_outline.get('title')}
             Layout: {slide_outline.get('layout')}
             Topic: {prompt}
             
-            Generate appropriate content based on layout type:
-            - chart: Include chart title, description, and data points
-            - table: Include headers and row data
-            - metrics: Include key_value pairs with labels
-            - image: Include image description or placeholder
-            - quote: Include quote text and author
-            - two_column: Include left_column and right_column content
-            - timeline: Include timeline_items with date and description
-            
-            Return valid JSON with: title, layout, content (with layout-specific fields), speaker_notes
+            Generate appropriate content based on layout type.
+            Return valid JSON with: title, layout, content, speaker_notes
             """
             
             slide_content = llm.generate_structured_response(
@@ -272,15 +265,15 @@ def generate_presentation_content(prompt: str, num_slides: int, template_data: O
             )
             
             if slide_content:
+                slide_content['slide_number'] = i + 1
                 generated_slides.append(slide_content)
             
-            progress_bar.progress(40 + (i + 1) * 60 // num_slides)
-            time.sleep(0.3)  # Rate limiting
+            progress_bar.progress(40 + (i + 1) * 60 // min(len(slides_list), num_slides))
+            time.sleep(0.3)
         
         progress_bar.progress(90)
         status_text.info("🔄 Validating and formatting slides...")
         
-        # Validate generated slides
         validation = SlideValidator.validate_slides(generated_slides)
         st.session_state.validation_result = validation
         
@@ -289,14 +282,12 @@ def generate_presentation_content(prompt: str, num_slides: int, template_data: O
             for error in validation['errors']:
                 st.warning(f"⚠️ {error}")
         
-        # Update session state
         st.session_state.slides = generated_slides
         st.session_state.presentation_title = st.session_state.presentation_title or prompt[:50]
         
         progress_bar.progress(100)
         status_text.success("✅ Presentation generated successfully!")
         
-        # Auto-save after generation
         auto_save_presentation()
         
         time.sleep(1)
@@ -326,7 +317,6 @@ def export_presentation(format_type: str) -> Optional[bytes]:
         return None
     
     try:
-        # Validate before export
         validation = SlideValidator.validate_slides(st.session_state.slides)
         
         if validation['errors']:
@@ -403,7 +393,6 @@ def display_generation_stats():
         has_tables = sum(1 for s in slides if s.get('layout') == 'table')
         st.metric("📋 Tables", has_tables)
     
-    # Layout distribution
     with st.expander("📐 Layout Distribution", expanded=False):
         layout_counts = {}
         for slide in slides:
@@ -422,24 +411,18 @@ def display_generation_stats():
 def main():
     """Main application entry point"""
     
-    # Initialize
     initialize_session_state()
     
-    # Load configuration
     if not load_configuration():
         st.stop()
     
-    # Try to load autosave
     if not st.session_state.slides:
         load_autosave()
     
-    # Render sidebar
     render_sidebar()
     
-    # Main content area
     st.markdown('<h1 class="main-header">🎨 AI Presentation Architect</h1>', unsafe_allow_html=True)
     
-    # Status indicator
     status_class = "status-ready" if st.session_state.slides else "status-processing"
     status_text = "✓ Ready" if st.session_state.slides else "⏳ Start creating"
     
@@ -450,7 +433,6 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Tabbed interface
     tab1, tab2, tab3, tab4 = st.tabs(["✏️ Editor", "👁️ Preview", "💬 AI Assistant", "📥 Export"])
     
     with tab1:
@@ -459,15 +441,10 @@ def main():
         if not st.session_state.slides:
             st.info("👈 Use the sidebar to configure your presentation and click 'Generate' to create slides")
         else:
-            # Display generation stats
             display_generation_stats()
-            
             st.divider()
-            
-            # Slide editor
             render_slide_editor()
             
-            # Auto-save indicator
             if st.session_state.last_saved:
                 st.caption(f"💾 Auto-saved at {st.session_state.last_saved.strftime('%H:%M:%S')}")
     
@@ -477,7 +454,6 @@ def main():
         if not st.session_state.slides:
             st.info("Generate slides first to see preview")
         else:
-            # Preview controls
             col1, col2 = st.columns([3, 1])
             with col2:
                 if st.button("🔄 Refresh Preview", use_container_width=True):
@@ -487,8 +463,6 @@ def main():
                 st.caption(f"Previewing {len(st.session_state.slides)} slide{'s' if len(st.session_state.slides) > 1 else ''}")
             
             st.divider()
-            
-            # Display all slides preview
             display_all_slides_preview(st.session_state.slides)
     
     with tab3:
@@ -507,7 +481,6 @@ def main():
         else:
             st.markdown('<div class="export-section">', unsafe_allow_html=True)
             
-            # Validation summary
             if st.session_state.validation_result:
                 val = st.session_state.validation_result
                 if val['valid']:
@@ -519,7 +492,6 @@ def main():
             
             st.divider()
             
-            # Export options
             col1, col2 = st.columns(2)
             
             with col1:
@@ -554,7 +526,6 @@ def main():
             
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # Export tips
             with st.expander("💡 Export Tips"):
                 st.markdown("""
                 - **PPTX**: Best for further editing in PowerPoint or Google Slides
@@ -564,7 +535,6 @@ def main():
                 - Speaker notes are included in PPTX (view in Notes pane)
                 """)
     
-    # Footer
     st.divider()
     st.caption(
         "🎨 AI Presentation Architect v2.0 • "
@@ -572,7 +542,6 @@ def main():
         f"API: {'✅ Connected' if st.session_state.api_configured else '❌ Not configured'}"
     )
     
-    # Periodic auto-save (every 2 minutes when active)
     if st.session_state.slides and st.session_state.last_saved:
         elapsed = (datetime.now() - st.session_state.last_saved).total_seconds()
         if elapsed > 120:
