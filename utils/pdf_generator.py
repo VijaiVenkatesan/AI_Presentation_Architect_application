@@ -1,5 +1,5 @@
 """
-Enhanced PDF Generator - Fixed ASCII quotes
+Enhanced PDF Generator - Fixed version
 """
 from typing import Dict, List, Any, Optional
 from pathlib import Path
@@ -10,7 +10,6 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 from reportlab.lib.colors import HexColor, black, grey, blue
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-from reportlab.pdfgen import canvas
 import logging
 
 logger = logging.getLogger(__name__)
@@ -226,14 +225,13 @@ class EnhancedPDFGenerator:
         return elements
     
     def _handle_quote_pdf(self, slide_data: Dict[str, Any]) -> List:
-        """Handle quote layout - FIXED QUOTES"""
+        """Handle quote layout"""
         elements = []
         content = slide_data.get('content', {})
         
         quote_text = content.get('quote', '')
         quote_author = content.get('quote_author', '')
         
-        # FIXED: Use escaped quotes
         elements.append(Paragraph('"' + quote_text + '"', self.styles['Quote']))
         
         if quote_author:
