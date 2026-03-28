@@ -38,7 +38,7 @@ def render_slide_preview(slide_data, idx):
 
 
 def display_all_slides_preview(slides_data):
-    if not slides_
+    if not slides_data:
         st.info("No slides to preview")
         return
     for i, sd in enumerate(slides_data, 1):
