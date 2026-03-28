@@ -1,7 +1,6 @@
 import streamlit as st
 import json
 
-# Core modules
 from core.db import init_db, save_project
 from core.auth import login, signup
 from core.groq_models import get_active_models
@@ -10,25 +9,25 @@ from core.ppt_generator import generate_ppt
 from core.editor_engine import render_editor
 from core.pdf_export import export_pdf
 
-# ---------------------------
-# INIT DB
-# ---------------------------
+# -------------------
+# INIT DB FIRST
+# -------------------
 init_db()
 
 st.set_page_config(layout="wide")
 
-# ---------------------------
+# -------------------
 # SESSION INIT
-# ---------------------------
+# -------------------
 if "user" not in st.session_state:
     st.session_state.user = None
 
 if "content" not in st.session_state:
     st.session_state.content = None
 
-# ---------------------------
-# LOGIN / SIGNUP
-# ---------------------------
+# -------------------
+# LOGIN
+# -------------------
 if not st.session_state.user:
 
     st.title("🔐 Login / Signup")
@@ -38,136 +37,68 @@ if not st.session_state.user:
 
     col1, col2 = st.columns(2)
 
-    # LOGIN
     if col1.button("Login"):
         if not u or not p:
-            st.warning("Please enter username and password")
+            st.warning("Enter username & password")
         else:
             success, result = login(u, p)
-
             if success:
                 st.session_state.user = result
-                st.success("Login successful ✅")
+                st.success("Login successful")
                 st.rerun()
             else:
                 st.error(result)
 
-    # SIGNUP
     if col2.button("Signup"):
         if not u or not p:
-            st.warning("Username & password required")
+            st.warning("Enter username & password")
         else:
             success, msg = signup(u, p)
-
             if success:
-                st.success("Signup successful 🎉 Now login")
+                st.success(msg)
             else:
-                st.error(f"Signup failed: {msg}")
+                st.error(msg)
 
     st.stop()
 
-# ---------------------------
+# -------------------
 # MAIN APP
-# ---------------------------
-st.title("🚀 Enterprise AI PPT Architect")
+# -------------------
+st.title("🚀 AI PPT Architect")
 
 st.success(f"Logged in as: {st.session_state.user[1]}")
 
-# Sidebar controls
-with st.sidebar:
-    st.header("⚙️ Controls")
+template = st.file_uploader("Upload PPT Template", type=["pptx"])
+slides = st.slider("Slides", 1, 100, 10)
+model = st.selectbox("Model", get_active_models())
 
-    template = st.file_uploader("Upload PPT Template", type=["pptx"])
+prompt = st.text_area("Enter Topic")
 
-    slides = st.slider("Number of Slides", 1, 100, 10)
-
-    models = get_active_models()
-    model = st.selectbox("Select Model", models)
-
-    if st.button("Reset Session"):
-        st.session_state.content = None
-        st.rerun()
-
-# Prompt input
-prompt = st.text_area("🧠 Enter Topic / Content")
-
-# ---------------------------
-# GENERATE CONTENT
-# ---------------------------
+# -------------------
+# GENERATE
+# -------------------
 if st.button("Generate Slides"):
+    with st.spinner("Generating..."):
+        st.session_state.content = generate_content(prompt, model, slides)
 
-    if not prompt:
-        st.warning("Please enter a topic")
-    else:
-        with st.spinner("Generating slides using AI..."):
-            try:
-                content = generate_content(prompt, model, slides)
-                st.session_state.content = content
-                st.success("Slides generated successfully 🚀")
-            except Exception as e:
-                st.error(f"Generation failed: {e}")
-
-# ---------------------------
-# EDITOR + OUTPUT
-# ---------------------------
+# -------------------
+# EDIT + EXPORT
+# -------------------
 if st.session_state.content:
 
-    st.subheader("✏️ Edit Slides")
-
-    try:
-        edited_data = render_editor(st.session_state.content)
-        st.session_state.content = json.dumps(edited_data)
-    except Exception as e:
-        st.error(f"Editor error: {e}")
-
-    st.divider()
+    edited = render_editor(st.session_state.content)
+    st.session_state.content = json.dumps(edited)
 
     col1, col2, col3 = st.columns(3)
 
-    # ---------------------------
-    # GENERATE PPT
-    # ---------------------------
-    if col1.button("📥 Generate PPT"):
-        if not template:
-            st.warning("Upload a template PPT first")
-        else:
-            with st.spinner("Building PPT..."):
-                try:
-                    file = generate_ppt(template, st.session_state.content)
+    if col1.button("Generate PPT"):
+        file = generate_ppt(template, st.session_state.content)
+        st.download_button("Download PPT", open(file, "rb"))
 
-                    with open(file, "rb") as f:
-                        st.download_button(
-                            "⬇️ Download PPT",
-                            f,
-                            file_name="generated.pptx"
-                        )
+    if col2.button("Download PDF"):
+        pdf = export_pdf(st.session_state.content)
+        st.download_button("Download PDF", open(pdf, "rb"))
 
-                except Exception as e:
-                    st.error(f"PPT generation failed: {e}")
-
-    # ---------------------------
-    # PDF EXPORT
-    # ---------------------------
-    if col2.button("📄 Download PDF"):
-        try:
-            pdf = export_pdf(st.session_state.content)
-
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    "⬇️ Download PDF",
-                    f,
-                    file_name="generated.pdf"
-                )
-
-        except Exception as e:
-            st.error(f"PDF export failed: {e}")
-
-    # ---------------------------
-    # SAVE PROJECT
-    # ---------------------------
-    if col3.button("💾 Save Project"):
-        try:
-            save_project(st.session_state.user[0], st.session_state.content)
-            st.success("Project saved successfully ✅")
-        except Exception as e:
-            st.error(f"Save failed: {e}")
+    if col3.button("Save"):
+        save_project(st.session_state.user[0], st.session_state.content)
+        st.success("Saved")
