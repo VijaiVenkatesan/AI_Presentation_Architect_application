@@ -1,1 +1,9 @@
-
+streamlit
+python-pptx
+groq
+duckduckgo_search
+Pillow
+opencv-python-headless
+pytesseract
+reportlab
+requests
