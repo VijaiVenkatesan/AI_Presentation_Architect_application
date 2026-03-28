@@ -26,7 +26,7 @@ if "content" not in st.session_state:
     st.session_state.content = None
 
 # -------------------
-# LOGIN
+# LOGIN / SIGNUP
 # -------------------
 if not st.session_state.user:
 
@@ -44,7 +44,7 @@ if not st.session_state.user:
             success, result = login(u, p)
             if success:
                 st.session_state.user = result
-                st.success("Login successful")
+                st.success("Login successful ✅")
                 st.rerun()
             else:
                 st.error(result)
@@ -64,7 +64,7 @@ if not st.session_state.user:
 # -------------------
 # MAIN APP
 # -------------------
-st.title("🚀 AI PPT Architect")
+st.title("🚀 Enterprise AI PPT Architect")
 
 st.success(f"Logged in as: {st.session_state.user[1]}")
 
@@ -78,27 +78,72 @@ prompt = st.text_area("Enter Topic")
 # GENERATE
 # -------------------
 if st.button("Generate Slides"):
-    with st.spinner("Generating..."):
-        st.session_state.content = generate_content(prompt, model, slides)
+    if not prompt:
+        st.warning("Please enter a topic")
+    else:
+        with st.spinner("Generating..."):
+            try:
+                st.session_state.content = generate_content(prompt, model, slides)
+                st.success("Slides generated 🚀")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 # -------------------
 # EDIT + EXPORT
 # -------------------
 if st.session_state.content:
 
-    edited = render_editor(st.session_state.content)
-    st.session_state.content = json.dumps(edited)
+    st.subheader("✏️ Edit Slides")
+
+    try:
+        edited = render_editor(st.session_state.content)
+        st.session_state.content = json.dumps(edited)
+    except Exception as e:
+        st.error(f"Editor error: {e}")
+
+    st.divider()
 
     col1, col2, col3 = st.columns(3)
 
-    if col1.button("Generate PPT"):
-        file = generate_ppt(template, st.session_state.content)
-        st.download_button("Download PPT", open(file, "rb"))
+    # PPT DOWNLOAD
+    if col1.button("📥 Generate PPT"):
+        if not template:
+            st.warning("Upload template first")
+        else:
+            try:
+                file = generate_ppt(template, st.session_state.content)
 
-    if col2.button("Download PDF"):
-        pdf = export_pdf(st.session_state.content)
-        st.download_button("Download PDF", open(pdf, "rb"))
+                with open(file, "rb") as f:
+                    st.download_button(
+                        label="⬇️ Download PPT",
+                        data=f.read(),
+                        file_name="generated.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    )
 
-    if col3.button("Save"):
-        save_project(st.session_state.user[0], st.session_state.content)
-        st.success("Saved")
+            except Exception as e:
+                st.error(f"PPT error: {e}")
+
+    # PDF DOWNLOAD
+    if col2.button("📄 Download PDF"):
+        try:
+            pdf = export_pdf(st.session_state.content)
+
+            with open(pdf, "rb") as f:
+                st.download_button(
+                    label="⬇️ Download PDF",
+                    data=f.read(),
+                    file_name="generated.pdf",
+                    mime="application/pdf"
+                )
+
+        except Exception as e:
+            st.error(f"PDF error: {e}")
+
+    # SAVE PROJECT
+    if col3.button("💾 Save Project"):
+        try:
+            save_project(st.session_state.user[0], st.session_state.content)
+            st.success("Saved successfully ✅")
+        except Exception as e:
+            st.error(f"Save error: {e}")
