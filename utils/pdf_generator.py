@@ -47,7 +47,7 @@ class EnhancedPDFGenerator:
                                 rightMargin=72, leftMargin=72,
                                 topMargin=72, bottomMargin=72)
         story = []
-        for sd in slides_
+        for sd in slides_data:
             try:
                 story.extend(self._make_slide(sd))
                 story.append(Spacer(1, 0.5 * inch))
