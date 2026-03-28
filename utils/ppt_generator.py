@@ -25,7 +25,6 @@ class EnhancedPPTGenerator:
             try:
                 self.prs = Presentation(template_path)
                 logger.info(f"Template loaded: {template_path}")
-                # Clear original slides but keep master/layouts
                 xml_slides = self.prs.slides._sldIdLst
                 while len(xml_slides) > 0:
                     xml_slides.remove(xml_slides[0])
@@ -39,7 +38,7 @@ class EnhancedPPTGenerator:
         self.slide_height = self.prs.slide_height
 
     def generate(self, slides_data):
-        for slide_data in slides_
+        for slide_data in slides_data:
             try:
                 self._create_slide(slide_data)
             except Exception as e:
@@ -88,7 +87,9 @@ class EnhancedPPTGenerator:
         content = slide_data.get('content', {})
         if len(slide.shapes) > 1:
             slide.shapes._spTree.remove(slide.shapes[1]._element)
-        top, bottom, margin = Inches(2.0), Inches(0.5), Inches(0.5)
+        top = Inches(2.0)
+        bottom = Inches(0.5)
+        margin = Inches(0.5)
         col_w = (self.slide_width - 2 * margin - Inches(0.3)) / 2
 
         def add_col(left_pos, items):
@@ -110,7 +111,8 @@ class EnhancedPPTGenerator:
             return self._handle_content_layout(slide, slide_data)
         if len(slide.shapes) > 1:
             slide.shapes._spTree.remove(slide.shapes[1]._element)
-        w, h = self.slide_width * 0.8, self.slide_height * 0.55
+        w = self.slide_width * 0.8
+        h = self.slide_height * 0.55
         shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, (self.slide_width - w) / 2, Inches(2.0), w, h)
         shape.fill.solid()
         shape.fill.fore_color.rgb = RGBColor(240, 240, 240)
@@ -133,10 +135,12 @@ class EnhancedPPTGenerator:
             return self._handle_content_layout(slide, slide_data)
         if len(slide.shapes) > 1:
             slide.shapes._spTree.remove(slide.shapes[1]._element)
-        rows, cols = len(data) + 1, len(headers)
+        rows = len(data) + 1
+        cols = len(headers)
         if cols == 0:
             return
-        tw, th = self.slide_width * 0.9, self.slide_height * 0.6
+        tw = self.slide_width * 0.9
+        th = self.slide_height * 0.6
         ppt_table = slide.shapes.add_table(rows, cols, (self.slide_width - tw) / 2, Inches(1.8), tw, th).table
         col_width = int(tw / cols)
         for i in range(cols):
@@ -178,7 +182,9 @@ class EnhancedPPTGenerator:
             slide.shapes._spTree.remove(slide.shapes[1]._element)
         n = len(metrics)
         bw = (self.slide_width - Inches(1)) / n - Inches(0.2)
-        bh, top, left = Inches(2.5), Inches(2.2), Inches(0.5)
+        bh = Inches(2.5)
+        top = Inches(2.2)
+        left = Inches(0.5)
         for i, m in enumerate(metrics):
             box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left + i * (bw + Inches(0.2)), top, bw, bh)
             box.fill.solid()
@@ -202,7 +208,9 @@ class EnhancedPPTGenerator:
             return self._handle_content_layout(slide, slide_data)
         if len(slide.shapes) > 1:
             slide.shapes._spTree.remove(slide.shapes[1]._element)
-        tw, tl, ty = self.slide_width * 0.9, (self.slide_width - self.slide_width * 0.9) / 2, Inches(3.0)
+        tw = self.slide_width * 0.9
+        tl = (self.slide_width - self.slide_width * 0.9) / 2
+        ty = Inches(3.0)
         line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, tl, ty + Inches(0.5), tw, Inches(0.05))
         line.fill.solid()
         line.fill.fore_color.rgb = RGBColor(79, 129, 189)
@@ -227,8 +235,10 @@ class EnhancedPPTGenerator:
         img = content.get('image', '')
         if len(slide.shapes) > 1:
             slide.shapes._spTree.remove(slide.shapes[1]._element)
-        iw, ih = self.slide_width * 0.7, self.slide_height * 0.55
-        lp, tp = (self.slide_width - iw) / 2, Inches(1.8)
+        iw = self.slide_width * 0.7
+        ih = self.slide_height * 0.55
+        lp = (self.slide_width - iw) / 2
+        tp = Inches(1.8)
         if not img or not isinstance(img, str) or img.strip() == '':
             self._add_placeholder(slide, lp, tp, iw, ih, "No image")
             return
