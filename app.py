@@ -17,40 +17,47 @@ if "user" not in st.session_state:
 
 if not st.session_state.user:
     st.title("Login / Signup")
+
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
 
-    if st.button("Login"):
+    col1, col2 = st.columns(2)
+
+    if col1.button("Login"):
         user = login(u, p)
         if user:
             st.session_state.user = user
             st.rerun()
 
-    if st.button("Signup"):
-        signup(u, p)
+    if col2.button("Signup"):
+        if signup(u, p):
+            st.success("Account created")
 
     st.stop()
 
 # APP
-st.title("🚀 AI PPT Architect")
+st.title("🚀 Enterprise AI PPT Architect")
 
-template = st.file_uploader("Upload Template", type=["pptx"])
+template = st.file_uploader("Upload PPT Template", type=["pptx"])
 slides = st.slider("Slides", 1, 100, 10)
-
 model = st.selectbox("Model", get_active_models())
+
 prompt = st.text_area("Enter Topic")
 
 if "content" not in st.session_state:
     st.session_state.content = None
 
-if st.button("Generate"):
-    st.session_state.content = generate_content(prompt, model, slides)
+if st.button("Generate Slides"):
+    with st.spinner("Generating..."):
+        st.session_state.content = generate_content(prompt, model, slides)
 
 if st.session_state.content:
+
+    st.subheader("Edit Slides")
     edited = render_editor(st.session_state.content)
     st.session_state.content = json.dumps(edited)
 
-    if st.button("Generate PPT"):
+    if template and st.button("Generate PPT"):
         file = generate_ppt(template, st.session_state.content)
         st.download_button("Download PPT", open(file, "rb"))
 
@@ -58,5 +65,6 @@ if st.session_state.content:
         pdf = export_pdf(st.session_state.content)
         st.download_button("Download PDF", open(pdf, "rb"))
 
-    if st.button("Save"):
+    if st.button("Save Project"):
         save_project(st.session_state.user[0], st.session_state.content)
+        st.success("Saved")
