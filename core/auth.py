@@ -1,11 +1,19 @@
 import sqlite3
 import hashlib
 
+DB_PATH = "/tmp/app.db"  # MUST match db.py
+
+
+def get_connection():
+    return sqlite3.connect(DB_PATH)
+
+
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
+
 def signup(username, password):
-    conn = sqlite3.connect("app.db")
+    conn = get_connection()
     c = conn.cursor()
 
     try:
@@ -23,7 +31,7 @@ def signup(username, password):
 
 
 def login(username, password):
-    conn = sqlite3.connect("app.db")
+    conn = get_connection()
     c = conn.cursor()
 
     c.execute(
