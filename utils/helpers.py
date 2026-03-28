@@ -16,6 +16,7 @@ def safe_json_load(text):
 def ensure_slide_structure(data):
     slides = data.get("slides", [])
     cleaned = []
+
     for slide in slides:
         cleaned.append({
             "title": slide.get("title", ""),
@@ -23,6 +24,7 @@ def ensure_slide_structure(data):
             "diagram_type": slide.get("diagram_type", ""),
             "image_prompt": slide.get("image_prompt", "")
         })
+
     return {"slides": cleaned}
 
 def validate_slide_count(data, max_slides=100):
