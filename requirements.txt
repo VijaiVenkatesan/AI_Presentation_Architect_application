@@ -1,7 +1,7 @@
 streamlit
 python-pptx
 groq
-duckduckgo_search
+ddgs
 Pillow
 opencv-python-headless
 pytesseract
