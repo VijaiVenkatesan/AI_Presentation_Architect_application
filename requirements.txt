@@ -1,9 +1,0 @@
-streamlit
-python-pptx
-groq
-ddgs
-Pillow
-opencv-python-headless
-pytesseract
-reportlab
-requests
