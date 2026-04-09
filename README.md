@@ -5,6 +5,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://enterprise-ai-presentation-architect-app.streamlit.app/)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
