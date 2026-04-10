@@ -38,12 +38,10 @@
 ## 🛠️ Tech Stack
 
 - **Frontend & UI**: [Streamlit](https://streamlit.io/) (Consulting-grade Glassmorphism UI)
-- **Inference Engines**: 
-    - [Groq API](https://groq.com/) (Ultra-fast LLM generation via Llama-3)
-    - [Google Gemini 1.5 Flash](https://aistudio.google.com/) (Vision-based template analysis)
+- **Inference Engine**: [Groq API](https://groq.com/) (Ultra-fast LLM generation via Llama-3)
 - **Core PPT Engine**: `python-pptx` (Custom "Sterile Stack" implementation)
 - **Research Integration**: [DuckDuckGo Search](https://pypi.org/project/duckduckgo-search/) (Real-time web verification)
-- **OCR & Vision**: [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) & [Pillow](https://python-pillow.org/)
+- **Vision & OCR**: [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) & [Pillow](https://python-pillow.org/) (Template branding & layout analysis)
 - **PDF Generation**: [fpdf2](https://github.com/PyFPDF/fpdf2)
 - **State Management**: JSON-based Session Persistence Engine
 
